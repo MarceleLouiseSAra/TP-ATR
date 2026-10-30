@@ -1,0 +1,11 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="processoExibicao/processoExibicao.vcxproj" Id="d820b024-6c7a-45fb-8970-630146219d77" />
+  <Project Path="processoGestaoDeProcesso/processoGestaoDeProcesso.vcxproj" Id="470fc06d-5697-41bc-944c-78dcae03f207" />
+  <Project Path="processoPrincipal/processoPrincipal.vcxproj" Id="e500fca3-005c-4aab-bc17-e23011b4644f" />
+  <Project Path="processoProdutor/processoProdutor.vcxproj" Id="693663b3-0f10-4b6f-a798-10d662dd5ad9" />
+</Solution>
