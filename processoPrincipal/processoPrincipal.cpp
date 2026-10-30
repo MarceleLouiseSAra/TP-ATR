@@ -1,11 +1,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>    // MAX_PATH, CreateProcess, GetModuleFileName
+#include <process.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
 #include <filesystem>
 #include <conio.h>		// _getch
+
+// Variáveis globais
+typedef unsigned *CAST_LPDWORD;
+const DWORD processesNumber = 3;
+HANDLE processos[processesNumber];
 
 //--------------------------------------------------
 //     INICIALIZAÇÃO DA ESTRUTURA DE CONTROLE
@@ -16,7 +22,7 @@ struct processo {
 	STARTUPINFO si;
 	PROCESS_INFORMATION newProcessInfo;
 	std::string processName;
-	std::wstring path;
+	std::wstring processPath;
 };
 
 processo Produtor;
@@ -26,7 +32,7 @@ processo GestaoDeProducao;
 bool inicializarProcesso(processo &processo) {
 
 	processo.processStatus = CreateProcess(
-		processo.path.c_str(),		  // Caminho do executável
+		processo.processPath.c_str(), // Caminho do executável, criado durante a compilação
 		NULL,                         // Argumentos da linha de comando
 		NULL,                         // Atributos de segurança do processo
 		NULL,                         // Atributos de segurança da thread
@@ -51,41 +57,65 @@ bool inicializarProcesso(processo &processo) {
 }
 
 //--------------------------------------------------
-//	     MECANISMOS PARA ESTABELECIMENTO DE 
-//		     COMUNICAÇÃO ENTRE PROCESSOS
+//   FUNÇÃO DE MONITORAMENTO DOS PROCESSOS FILHOS
 //--------------------------------------------------
 
+unsigned __stdcall monitorarProcesso(void* param) {
+
+	std::cout << "Thread secundária iniciou o monitoramento dos processos filhos." << std::endl;
+
+	DWORD waitResult = WaitForMultipleObjects(processesNumber, 
+											  (HANDLE*)param,
+											  FALSE,
+											  INFINITE);
+
+	if (waitResult >= WAIT_OBJECT_0 && waitResult < WAIT_OBJECT_0 + processesNumber) {
+		int index = waitResult - WAIT_OBJECT_0;
+		std::cout << "O pProcesso filho " << index + 1 << " finalizou." << std::endl;
+	} else {
+		std::cout << "Erro no monitoramento dos processos filhos. Codigo: " << GetLastError() << std::endl;
+	}
+}
+
 //--------------------------------------------------
-//		INICIALIZAÇÃO DOS DEMAIS EXECUTÁVEIS
+//	     MECANISMOS PARA ESTABELECIMENTO DE 
+//		     COMUNICAÇÃO ENTRE PROCESSOS
 //--------------------------------------------------
 
 namespace fs = std::filesystem;
 
 int main() {
 
+	//--------------------------------------------------
+	//	  OBTENÇÃO DO DIRETÓRIO DOS EXECUTÁVEIS
+	//--------------------------------------------------
+
 	wchar_t currentPath[MAX_PATH];
 
 	DWORD dwResult = GetModuleFileName(NULL, 
-					  currentPath, 
-					  MAX_PATH);
+									   currentPath, 
+									   MAX_PATH);
 
 	if (dwResult == 0) {
 		std::cout << "Erro ao obter o caminho do executável atual. Codigo: " << GetLastError() << std::endl;
 		return 1;
 	}
 	else if (dwResult > MAX_PATH) {
-		std::cout << "O caminho pode ter sido truncado." << std::endl;
+		std::cout << "O caminho do executável atual pode ter sido truncado." << std::endl;
 		return 1;
 	}
 
 	fs::path directory = fs::path(currentPath).parent_path(); // Obtém o diretório do executável atual
 
 	// Bloco de montagem dos caminhos dos executáveis dos processos filhos
-	Produtor.path = directory / L"processoProdutor.exe";
-	Exibicao.path = directory / L"processoExibicao.exe";
-	GestaoDeProducao.path = directory / L"processoGestaoDeProducao.exe";
+	Produtor.processPath = directory / L"processoProdutor.exe";
+	Exibicao.processPath = directory / L"processoExibicao.exe";
+	GestaoDeProducao.processPath = directory / L"processoGestaoDeProducao.exe";
 
-	// Bloco de inicialização dos atributos dos processos filhos
+	//--------------------------------------------------
+	// INICIALIZAÇÃO DOS ATRIBUTOS DOS PROCESSOS FILHOS
+	//--------------------------------------------------
+
 	Produtor.processStatus = FALSE;
 	ZeroMemory(&Produtor.si, sizeof(Produtor.si));
 	ZeroMemory(&Produtor.newProcessInfo, sizeof(Produtor.newProcessInfo));
@@ -104,13 +134,58 @@ int main() {
 	GestaoDeProducao.si.cb = sizeof(GestaoDeProducao.si);
 	GestaoDeProducao.processName = "Processo de Gestão de Produção";
 
+	//--------------------------------------------------
+	//		    INICIALIZAÇÃO DOS EXECUTÁVEIS 
+	//			    DOS PROCESSOS FILHOS
+	//--------------------------------------------------
+
+	inicializarProcesso(Produtor);
+	inicializarProcesso(Exibicao);
+	inicializarProcesso(GestaoDeProducao);
+
+	//--------------------------------------------------
+	//	MONITORAMENTO DOS ESTADOS DOS PROCESSOS FILHOS
+	//--------------------------------------------------
+
+	processos[0] = Produtor.newProcessInfo.hProcess;
+	processos[1] = Exibicao.newProcessInfo.hProcess;
+	processos[2] = GestaoDeProducao.newProcessInfo.hProcess;
+
+	// Criação de uma thread dedicada ao monitoramento dos estados dos demais executáveis
+
+	HANDLE thread;
+	DWORD threadId, threadExitCode;
+
+	thread = (HANDLE)_beginthreadex(NULL,
+						            0,
+						            monitorarProcesso,
+						            processos,
+						            0,
+						            (CAST_LPDWORD) & threadId
+	);
+
+	if (thread) {
+		std::cout << "Thread de monitoramento criada com sucesso! ID da thread: " << threadId << std::endl;
+	}
+	else {
+		std::cout << "Erro na criação da thread de monitoramento. Codigo: " << GetLastError() << std::endl;
+	}
+
+	//--------------------------------------------------
+	//		INTERAÇÃO DO USUÁRIO COM O SISTEMA
+	//--------------------------------------------------
+
+
+
+	//--------------------------------------------------
+	//	 AGUARDA O TÉRMINO DA THREAD DE MONITORAMENTO
+	//               E FECHA SEU HANDLE
+	//--------------------------------------------------
+
+	GetExitCodeThread(thread, &threadExitCode);
+	std::cout << "Thread de monitoramento finalizada com o seguinte código de saída: " << threadExitCode << std::endl;
+
+	CloseHandle(thread);
+
 	return 0;
 }
-
-//--------------------------------------------------
-//	   MONITORAMENTO DA INTEGRIDADE DE EXECUÇÃO
-//--------------------------------------------------
-
-//--------------------------------------------------
-//		INTEREÇÃO DO USUÁRIO COM O SISTEMA
-//--------------------------------------------------
