@@ -1,20 +1,172 @@
 // processoProdutor.cpp : Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
 //
-
 #include <iostream>
+#include <string>
+#include <windows.h>
+#include <process.h>
+#include <conio.h>
 
-int main()
-{
-    std::cout << "Hello World!\n";
+#include "Buffer1.h"
+
+// Estrutura com os dados compartilhados entre as threads
+struct DadosCompartilhados {
+    Buffer1* buffer;
+    HANDLE CloseEvent;
+};
+
+
+//              TAREFA 1 - SUPERVISÓRIO
+
+unsigned __stdcall tarefa1(void* param) {
+
+    DadosCompartilhados* dados = (DadosCompartilhados*)param;
+
+    int contador = 1;
+
+    while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
+
+        std::string mensagem =
+            "Supervisório: mensagem " + std::to_string(contador++);
+
+        if (!dados->buffer->Insert(mensagem, "Supervisório")) {
+            break;
+        }
+
+        Sleep(1000);
+    }
+
+    std::cout << "Tarefa 1 encerrada." << std::endl;
+
+    return 0;
 }
 
-// Executar programa: Ctrl + F5 ou Menu Depurar > Iniciar Sem Depuração
-// Depurar programa: F5 ou menu Depurar > Iniciar Depuração
 
-// Dicas para Começar: 
-//   1. Use a janela do Gerenciador de Soluções para adicionar/gerenciar arquivos
-//   2. Use a janela do Team Explorer para conectar-se ao controle do código-fonte
-//   3. Use a janela de Saída para ver mensagens de saída do build e outras mensagens
-//   4. Use a janela Lista de Erros para exibir erros
-//   5. Ir Para o Projeto > Adicionar Novo Item para criar novos arquivos de código, ou Projeto > Adicionar Item Existente para adicionar arquivos de código existentes ao projeto
-//   6. No futuro, para abrir este projeto novamente, vá para Arquivo > Abrir > Projeto e selecione o arquivo. sln
+//                  TAREFA 2 - PCP
+
+unsigned __stdcall tarefa2(void* param) {
+
+    DadosCompartilhados* dados = (DadosCompartilhados*)param;
+
+    int contador = 1;
+
+    while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
+
+        std::string mensagem =
+            "PCP: mensagem " + std::to_string(contador++);
+
+        if (!dados->buffer->Insert(mensagem, "PCP")) {
+            break;
+        }
+
+        Sleep(1000);
+    }
+
+    std::cout << "Tarefa 2 encerrada." << std::endl;
+
+    return 0;
+}
+
+//              TAREFA 3 - CAPTURA
+
+unsigned __stdcall tarefa3(void* param) {
+
+    DadosCompartilhados* dados = (DadosCompartilhados*)param;
+
+    std::string mensagem;
+
+    while (dados->buffer->Remove(mensagem)) {
+
+        std::cout << "[Tarefa 3] Mensagem recebida: "
+                  << mensagem << std::endl;
+    }
+
+    std::cout << "Tarefa 3 encerrada." << std::endl;
+
+    return 0;
+}
+
+
+int main() {
+
+    //evento de encerramento
+    HANDLE CloseEvent = CreateEventW(nullptr,TRUE,FALSE,nullptr);
+
+    if (CloseEvent == nullptr) {
+        std::cout << "Erro ao criar evento de encerramento. Código: " << GetLastError() << std::endl;
+        return 1;
+    }
+
+   //inicilaiza o buffer
+
+    Buffer1 buffer(CloseEvent);
+
+    DadosCompartilhados dados;
+    dados.buffer = &buffer;
+    dados.CloseEvent = CloseEvent;
+
+    //threads
+
+    HANDLE threads[3] = {};
+    unsigned threadIds[3] = {};
+
+    threads[0] = (HANDLE)_beginthreadex(nullptr, 0, tarefa1, &dados, 0, &threadIds[0] );
+
+    threads[1] = (HANDLE)_beginthreadex(nullptr, 0, tarefa2, &dados, 0, &threadIds[1] );
+
+    threads[2] = (HANDLE)_beginthreadex(nullptr, 0, tarefa3, &dados, 0, &threadIds[2] );
+
+    int threadsCriadas = 0;
+
+    for (int i = 0; i < 3; i++) {
+        if (threads[i] != nullptr) {
+            threadsCriadas++;
+            std::cout << "Thread da Tarefa " << i + 1 << " criada. ID: " << threadIds[i] << std::endl;
+        }
+        else {
+            std::cout << "Erro ao criar a thread da Tarefa " << i + 1 << ". Código: " << GetLastError() << std::endl;
+        }
+    }
+
+    //encerra threads
+    if (threadsCriadas == 3) {
+        std::cout << "\nProcesso Produtor em execução." << std::endl;
+
+        std::cout << "Pressione qualquer tecla para encerrar o teste."<< std::endl;
+
+        _getch(); //tem que ver isso aqui
+    }
+
+    // Sinaliza o encerramento das tarefas
+    SetEvent(CloseEvent);
+
+    // Aguarda todas as threads que foram criadas
+    if (threadsCriadas > 0) {
+
+        HANDLE threadsAtivas[3];
+        int quantidade = 0;
+
+        for (int i = 0; i < 3; i++) {
+            if (threads[i] != nullptr) {
+                threadsAtivas[quantidade++] = threads[i];
+            }
+        }
+
+        WaitForMultipleObjects(quantidade,threadsAtivas,TRUE,INFINITE);
+    }
+
+    //libera os trem
+
+    for (int i = 0; i < 3; i++) {
+        if (threads[i] != nullptr) {
+            CloseHandle(threads[i]);
+        }
+    }
+
+    //buffer.CloseHandles(); closehandles é privado
+
+    CloseHandle(CloseEvent);
+
+    std::cout << "\nProcesso Produtor encerrado." << std::endl;
+
+    return 0;
+}
