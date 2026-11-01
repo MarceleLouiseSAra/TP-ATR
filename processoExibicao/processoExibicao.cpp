@@ -51,10 +51,9 @@ int main() {
 	unsigned int resultadoDeMonitorarEncerramento = monitorarEncerramento(eventoDeEncerramento);
 
 	if (resultadoDeMonitorarEncerramento == 0) {
-		std::cout << "O processo de exibição foi encerrado com erro." << std::endl;
-	}
-	else {
 		std::cout << "Processo de exibição encerrado idealmente." << std::endl;
+	} else {
+		std::cout << "O processo de exibição foi encerrado com erro." << std::endl;
 	}
 
 	CloseHandle(eventoDeEncerramento);
