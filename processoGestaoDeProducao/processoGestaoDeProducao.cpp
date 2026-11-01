@@ -9,7 +9,9 @@
 #include <filesystem>
 #include <conio.h>		// _getch
 
-unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
+unsigned __stdcall monitorarEncerramento(void* param) {
+
+	HANDLE eventoDeEncerramento = static_cast<HANDLE>(param);
 
 	if (eventoDeEncerramento == nullptr) {
 		std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
@@ -20,13 +22,17 @@ unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
 		DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
 		if (result == WAIT_OBJECT_0) {
+
 			std::cout << "Evento de encerramento sinalizado. Encerrando o processo de gestão de produção." << std::endl;
+			return 0;
+
 		} else if (result == WAIT_FAILED) {
+
 			std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
+			return 1;
 		}
 	}
 
-	return 0;
 }
 
 int main() {
@@ -41,7 +47,13 @@ int main() {
 		return 1;
 	}
 
-	monitorarEncerramento(eventoDeEncerramento);
+	unsigned int resultadoDeMonitorarEncerramento = monitorarEncerramento(eventoDeEncerramento);
+
+	if (resultadoDeMonitorarEncerramento == 0) {
+		std::cout << "O processo de gestão de produção foi encerrado com erro." << std::endl;
+	} else {
+		std::cout << "Processo de gestão de produção encerrado idealmente." << std::endl;
+	}
 
 	CloseHandle(eventoDeEncerramento);
 

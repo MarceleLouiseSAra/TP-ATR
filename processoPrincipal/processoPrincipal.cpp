@@ -97,7 +97,6 @@ bool inicializarProcesso(processo &processo) {
 	}
 
 	return true;
-
 }
 
 void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &processos) {

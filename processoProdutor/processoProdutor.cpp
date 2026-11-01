@@ -91,7 +91,7 @@ unsigned __stdcall monitorarEncerramento(void* param) {
     HANDLE eventoDeEncerramento = static_cast<HANDLE>(param);
 
     if (eventoDeEncerramento == nullptr) {
-        std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
+        std::cout << "Handle do evento inválido. Código de saída: " << GetLastError() << std::endl;
         return 1;
 
     } else {
@@ -100,12 +100,14 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 
         if (result == WAIT_OBJECT_0) {
             std::cout << "Evento de encerramento sinalizado. Encerrando o processo produtor." << std::endl;
+            return 0;
+
         } else if (result == WAIT_FAILED) {
             std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
+            return 1;
         }
     }
 
-    return 0;
 }
 
 int main() {
@@ -147,7 +149,7 @@ int main() {
 
     threads[2] = (HANDLE)_beginthreadex(nullptr, 0, tarefa3, &dados, 0, &threadIds[2] );
 
-    threads[3] = (HANDLE)_beginthreadex(nullptr, 0, monitorarEncerramento, &dados, 0, &threadIds[3]);
+    threads[3] = (HANDLE)_beginthreadex(nullptr, 0, monitorarEncerramento, eventoDeEncerramento, 0, &threadIds[3]);
 
     int threadsCriadas = 0;
 
