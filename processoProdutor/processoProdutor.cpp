@@ -86,7 +86,9 @@ unsigned __stdcall tarefa3(void* param) {
     return 0;
 }
 
-unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
+unsigned __stdcall monitorarEncerramento(void* param) {
+
+    HANDLE eventoDeEncerramento = static_cast<HANDLE>(param);
 
     if (eventoDeEncerramento == nullptr) {
         std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
@@ -110,8 +112,8 @@ int main() {
 
     //evento de encerramento externo
     HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
-        FALSE,
-        L"eventoDeEncerramentoDosProcessosFilhos");
+                                             FALSE,
+                                             L"eventoDeEncerramentoDosProcessosFilhos");
 
     if (eventoDeEncerramento == nullptr) {
         std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
