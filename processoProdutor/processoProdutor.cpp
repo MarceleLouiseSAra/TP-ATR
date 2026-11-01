@@ -156,11 +156,11 @@ int main() {
         }
         else {
             std::cout << "Erro ao criar a thread da Tarefa " << i + 1 << ". Código: " << GetLastError() << std::endl;
-            return 1;
+            SetEvent(CloseEvent);
         }
     }
 
-    //encerra threads
+   //encerra threads
    if (threadsCriadas == NTHREADS) {
         std::cout << "\nProcesso Produtor em execução." << std::endl;
         //std::cout << "Pressione qualquer tecla para encerrar o teste." << std::endl;
@@ -170,9 +170,18 @@ int main() {
 
         if (waitThreadDeMonitoramento == WAIT_OBJECT_0) {
 
-            std::cout << "O processo principal solicitou o encerramento dos processos-filhos." << std::endl;
-            // Sinaliza o encerramento das tarefas
-            SetEvent(CloseEvent);
+            DWORD codigoDeSaidaDaThreadDeMonitoramento;
+
+            if (GetExitCodeThread(threads[3], &codigoDeSaidaDaThreadDeMonitoramento)) {
+
+                if (codigoDeSaidaDaThreadDeMonitoramento == 0) {
+                    std::cout << "O processo principal solicitou o encerramento dos processos-filhos." << std::endl;
+                    // Sinaliza o encerramento das tarefas
+                    SetEvent(CloseEvent);
+                }
+            } else {
+                std::cout << "A thread de monitoramento terminou com erro." << std::endl;
+            }
 
         } else {
             std::cout << "Erro ao aguardar a sinalização da thread de monitoramento. Código de saída: " << GetLastError() << std::endl;
@@ -193,10 +202,13 @@ int main() {
             DWORD waitDemaisThreads = WaitForMultipleObjects(quantidade,threadsAtivas,TRUE,INFINITE);
 
             if (waitDemaisThreads == WAIT_OBJECT_0) {
-                std::cout << "Demais threads devidamente sinalizadas." << std::endl;
-            }
-            else {
-                std::cout << "Erro ao aguardar a sinalização das demais threads. Código de saída: " << GetLastError() << std::endl;
+                std::cout << "Demais threads devidamente finalizadas." << std::endl;
+
+            } else if (waitDemaisThreads == WAIT_FAILED) {
+                std::cout << "Erro ao aguardar a finalização das demais threads. Código de saída: " << GetLastError() << std::endl;
+
+            } else {
+                std::cout << "Resultado inesperado ao agurdar o término das demais threads." << std::endl;
             }
         }
     }
