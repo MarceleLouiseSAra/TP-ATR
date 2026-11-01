@@ -18,5 +18,8 @@
     <ClCompile Include="processoProdutor.cpp">
       <Filter>Arquivos de Origem</Filter>
     </ClCompile>
+    <ClCompile Include="Buffer1.cpp">
+      <Filter>Arquivos de Origem</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

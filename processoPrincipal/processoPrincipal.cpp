@@ -212,7 +212,7 @@ void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& proce
 		std::cout << "Digite 'ESC' para sair." << std::endl;
 		std::cout << "----------------------------------------" << std::endl;
 
-		while (!kbhit()) { // Aguarda que o usuário forneça uma entrada. Enquanto isso não acontece, monitora-se o estado dos processos-filhos
+		while (!_kbhit()) { // Aguarda que o usuário forneça uma entrada. Enquanto isso não acontece, monitora-se o estado dos processos-filhos
 
 			DWORD falhaPrematuraDeUmProcessoFilho = WaitForSingleObject(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho,
 																		0); // Retorna imediatamente
@@ -276,6 +276,8 @@ void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& proce
 namespace fs = std::filesystem;
 
 int main() {
+
+	SetConsoleOutputCP(CP_UTF8); // Configura a saída do console para UTF-8
 
 	//--------------------------------------------------
 	//				DECLARAÇÃO DOS EVENTOS
