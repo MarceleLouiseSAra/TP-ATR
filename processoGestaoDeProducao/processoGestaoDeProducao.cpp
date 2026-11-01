@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <conio.h>		// _getch
 
-void monitoraEncerramento(HANDLE eventoDeEncerramento) {
+unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
 
 	if (eventoDeEncerramento != nullptr) {
 		std::cout << "Evento de encerramento sinalizado. Encerrando o processo de exibição." << std::endl;
@@ -27,7 +27,13 @@ void monitoraEncerramento(HANDLE eventoDeEncerramento) {
 int main() {
 	std::cout << "Este é o processo de gestão de produção.\n";
 
-	monitoraEncerramento();
+	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
+											 FALSE, 
+											 L"eventoDeEncerramentoDosProcessosFilhos");
+
+	monitorarEncerramento(eventoDeEncerramento);
+
+	CloseHandle(eventoDeEncerramento);
 
 	return 0;
 }

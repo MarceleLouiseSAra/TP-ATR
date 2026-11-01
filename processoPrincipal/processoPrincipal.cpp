@@ -50,6 +50,20 @@ std::vector<std::pair<processo*, std::string>> processos = {
 // Estrutura de dados que reúne os handles dos processos-filhos
 std::vector<HANDLE> handlesDosProcessos;
 
+struct evento { // não gostei muito disso daqui não
+	HANDLE eventoDeEncerramentoPrematuroDeUmProcessoFilho;
+	HANDLE eventoDeEncerramentoDosProcessosFilhos;
+	HANDLE eventoDeAlternarEstadoDaLeituraDoSupervisorio;
+	HANDLE eventoDeAlternarEstadoDaLeituraDoPCP;
+	HANDLE eventoDeAlternarEstadoDaRetiradaDeMensagens;
+	HANDLE eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso;
+	HANDLE eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao;
+	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso;
+	HANDLE eventoDeLimparJanelaDaTarefaDeGestaoDaProducao;
+};
+
+evento eventos;
+
 // Estrutura de dados que reúne os handles dos eventos de sincronização
 std::vector<HANDLE> handlesDosEventos;
 
@@ -98,13 +112,27 @@ void fecharHandleDoProcesso(processo& processo) {
 	}
 }
 
+void encerrarProcessosFilhos() {
+	if (eventos.eventoDeEncerramentoDosProcessosFilhos != nullptr) {
+
+		SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
+
+		for (HANDLE handleDeUmProcesso : handlesDosProcessos) {
+			WaitForSingleObject(handleDeUmProcesso, INFINITE); // Espera o encerramento de um processo-filho de cada vez
+			CloseHandle(handleDeUmProcesso);
+		}
+
+		CloseHandle(eventos.eventoDeEncerramentoDosProcessosFilhos);
+	}
+}
+
 //--------------------------------------------------
-//   FUNÇÃO DE MONITORAMENTO DOS PROCESSOS FILHOS
+//   FUNÇÃO DE MONITORAMENTO DOS PROCESSOS-FILHOS
 //--------------------------------------------------
 
 unsigned __stdcall monitorarProcesso(void* param) {
 
-	std::cout << "Thread secundária iniciou o monitoramento dos processos filhos." << std::endl;
+	std::cout << "Thread secundária iniciou o monitoramento dos processos-filhos." << std::endl;
 
 	DWORD waitResult = WaitForMultipleObjects(processesNumber, 
 											  (HANDLE*)param,
@@ -113,9 +141,20 @@ unsigned __stdcall monitorarProcesso(void* param) {
 
 	if (waitResult >= WAIT_OBJECT_0 && waitResult < WAIT_OBJECT_0 + processesNumber) {
 		int index = waitResult - WAIT_OBJECT_0;
-		std::cout << "O processo filho " << index + 1 << " finalizou." << std::endl;
+
+		DWORD threadSecundariaExitCode;
+
+		if (GetExitCodeThread(((HANDLE*)param)[index], &threadSecundariaExitCode)) {
+
+			std::cout << "O processo-filho " << index + 1 << " finalizou prematuramente. Código de saída: " << threadSecundariaExitCode << std::endl;
+			encerrarProcessosFilhos();
+
+		} else {
+			std::cout << "Erro ao obter o código de saída do processo-filho " << index + 1 << ". Código: " << GetLastError() << std::endl;
+		}
+
 	} else {
-		std::cout << "Erro no monitoramento dos processos filhos. Codigo: " << GetLastError() << std::endl;
+		std::cout << "Erro no monitoramento dos processos-filhos. Código: " << GetLastError() << std::endl;
 	}
 }
 
@@ -123,7 +162,7 @@ unsigned __stdcall monitorarProcesso(void* param) {
 //  FUNÇÃO DE EXIBIÇÃO DO MENU DE OPÇÕES DO SISTEMA
 //--------------------------------------------------
 
-void menu() {
+void menu(evento& eventos) {
 
 	do {
 		std::cout << "----------------------------------------" << std::endl;
@@ -141,30 +180,46 @@ void menu() {
 
 		tecla = _getch(); // Captura a entrada fornecida pelo usuário
 
+		DWORD falhaPrematuraDeUmProcessoFilho = WaitForSingleObject(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho,
+																	0);
+
+		if (falhaPrematuraDeUmProcessoFilho == WAIT_OBJECT_0) {
+
+			std::cout << "Um dos processos-filhos falhou prematuramente. O sistema será encerrado." << std::endl;
+			SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
+
+		} else if (falhaPrematuraDeUmProcessoFilho == WAIT_FAILED) {
+
+			std::cout << "Erro ao aguardar o evento de falha prematura de um processo-filho. Código de saída: " << GetLastError() << std::endl;
+		}
+
 		if (tecla == ESC) {
-			std::cout << "Saindo do sistema..." << std::endl;
-			//SetEvent(eventoDeEncerramentoDosProcessosFilhos);
+			std::cout << "O sistema está sendo encerrado." << std::endl;
+			SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
 		}
 		else if (tecla == 's') {
-			//SetEvent(eventoDeAlternarEstadoDaLeituraDoSupervisorio);
+			SetEvent(eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio);
 		}
 		else if (tecla == 'm') {
-			//SetEvent(eventoDeAlternarEstadoDaLeituraDoPCP);
+			SetEvent(eventos.eventoDeAlternarEstadoDaLeituraDoPCP);
 		}
 		else if (tecla == 'r') {
-			//SetEvent(eventoDeAlternarEstadoDaRetiradaDeMensagens);
+			SetEvent(eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens);
 		}
 		else if (tecla == 'p') {
-			//SetEvent(eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso);
+			SetEvent(eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso);
 		}
 		else if (tecla == 'g') {
-			//SetEvent(eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao);
+			SetEvent(eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao);
 		}
 		else if (tecla == '1') {
-			//SetEvent(eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso);
+			SetEvent(eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso);
 		}
 		else if (tecla == '2') {
-			//SetEvent(eventoDeLimparJanelaDaTarefaDeGestaoDaProducao);
+			SetEvent(eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao);
+		}
+		else {
+			std::cout << "Opção de entrada inválida. Por favor, forneça uma entrada válida." << std::endl;
 		}
 
 	} while (tecla != ESC);
@@ -176,6 +231,8 @@ void menu() {
 //		     COMUNICAÇÃO ENTRE PROCESSOS
 //--------------------------------------------------
 
+// ...
+
 namespace fs = std::filesystem;
 
 int main() {
@@ -184,12 +241,19 @@ int main() {
 	//				DECLARAÇÃO DOS EVENTOS
 	//--------------------------------------------------
 
-	HANDLE eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr,
+	eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho = CreateEventW(nullptr,
+		true,
+		false,
+		nullptr);
+
+	handlesDosEventos.push_back(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
+
+	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr,
 																 true,
 																 false,
 																 nullptr);
 
-	handlesDosEventos.push_back(eventoDeEncerramentoDosProcessosFilhos);
+	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
 	for (HANDLE handleDeUmEvento : handlesDosEventos) {
 		if (handleDeUmEvento == nullptr) {
@@ -211,7 +275,7 @@ int main() {
 									   MAX_PATH);
 
 	if (dwResult == 0) {
-		std::cout << "Erro ao obter o caminho do executável atual. Codigo: " << GetLastError() << std::endl;
+		std::cout << "Erro ao obter o caminho do executável atual. Código de saída: " << GetLastError() << std::endl;
 		return 1;
 	}
 	else if (dwResult > MAX_PATH) {
@@ -246,18 +310,7 @@ int main() {
 	// Rotina de limpeza como tratamento para inicialização mal-sucedida
 	if (!inicializacaoBemSucedida) {
 
-		if (eventoDeEncerramentoDosProcessosFilhos != nullptr) {
-
-			SetEvent(eventoDeEncerramentoDosProcessosFilhos);
-
-			for (HANDLE handleDeUmProcesso : handlesDosProcessos) { // Espera o encerramento de um processo de cada vez
-				WaitForSingleObject(handleDeUmProcesso, INFINITE); // Espera indefinidamente pela sinalização
-				CloseHandle(handleDeUmProcesso);
-			}
-
-			CloseHandle(eventoDeEncerramentoDosProcessosFilhos);
-		}
-
+		encerrarProcessosFilhos();
 		return 1;
 	}
 
@@ -267,36 +320,37 @@ int main() {
 
 	// Criação de uma thread dedicada ao monitoramento dos estados dos demais executáveis
 
-	HANDLE thread;
-	DWORD threadId;
+	HANDLE threadSecundaria;
+	DWORD threadSecundariaId;
 
-	thread = (HANDLE)_beginthreadex(NULL,
+	threadSecundaria = (HANDLE)_beginthreadex(NULL,
 						            0,
 						            monitorarProcesso,
 									&handlesDosProcessos,
 						            0,
-						            (CAST_LPDWORD) & threadId
+						            (CAST_LPDWORD) &threadSecundariaId
 	);
 
-	if (thread) {
-		std::cout << "Thread de monitoramento criada com sucesso! ID da thread: " << threadId << std::endl;
+	if (threadSecundaria) {
+		std::cout << "Thread de monitoramento criada com sucesso. ID da thread: " << threadSecundariaId << std::endl;
 	}
 	else {
-		std::cout << "Erro na criação da thread de monitoramento. Codigo: " << GetLastError() << std::endl;
+		std::cout << "Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
 	}
 
 	//--------------------------------------------------
 	//		INTERAÇÃO DO USUÁRIO COM O SISTEMA
 	//--------------------------------------------------
 
-	menu(); // Exibe o menu de opções do sistema e aguarda a entrada do usuário
+	menu(eventos); // Exibe o menu de opções do sistema e aguarda a entrada do usuário
 
 	//--------------------------------------------------
 	//	 AGUARDA O TÉRMINO DA THREAD DE MONITORAMENTO
 	//               E FECHA SEU HANDLE
 	//--------------------------------------------------
 
-	
+	WaitForSingleObject(threadSecundaria, INFINITE);
+	CloseHandle(threadSecundaria);
 
 	//--------------------------------------------------
 	//	    FECHA OS HANDLES DOS PROCESSOS FILHOS

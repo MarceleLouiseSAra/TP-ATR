@@ -14,6 +14,7 @@ struct DadosCompartilhados {
     HANDLE CloseEvent;
 };
 
+#define NTHREADS 4
 
 //              TAREFA 1 - SUPERVISÓRIO
 
@@ -85,6 +86,20 @@ unsigned __stdcall tarefa3(void* param) {
     return 0;
 }
 
+unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
+
+    if (eventoDeEncerramento != nullptr) {
+        std::cout << "Evento de encerramento sinalizado. Encerrando o processo de exibição." << std::endl;
+        DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
+
+        if (result == WAIT_OBJECT_0) {
+            ExitProcess(0);
+        }
+        else {
+            std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
+        }
+    }
+}
 
 int main() {
 
@@ -106,8 +121,8 @@ int main() {
 
     //threads
 
-    HANDLE threads[3] = {};
-    unsigned threadIds[3] = {};
+    HANDLE threads[NTHREADS] = {};
+    unsigned threadIds[NTHREADS] = {};
 
     threads[0] = (HANDLE)_beginthreadex(nullptr, 0, tarefa1, &dados, 0, &threadIds[0] );
 
@@ -115,9 +130,11 @@ int main() {
 
     threads[2] = (HANDLE)_beginthreadex(nullptr, 0, tarefa3, &dados, 0, &threadIds[2] );
 
+    threads[3] = (HANDLE)_beginthreadex(nullptr, 0, monitorarEncerramento, &dados, 0, &threadIds[3]);
+
     int threadsCriadas = 0;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < NTHREADS; i++) {
         if (threads[i] != nullptr) {
             threadsCriadas++;
             std::cout << "Thread da Tarefa " << i + 1 << " criada. ID: " << threadIds[i] << std::endl;
@@ -128,7 +145,7 @@ int main() {
     }
 
     //encerra threads
-    if (threadsCriadas == 3) {
+    if (threadsCriadas == NTHREADS) {
         std::cout << "\nProcesso Produtor em execução." << std::endl;
 
         std::cout << "Pressione qualquer tecla para encerrar o teste."<< std::endl;
@@ -142,10 +159,10 @@ int main() {
     // Aguarda todas as threads que foram criadas
     if (threadsCriadas > 0) {
 
-        HANDLE threadsAtivas[3];
+        HANDLE threadsAtivas[NTHREADS];
         int quantidade = 0;
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < NTHREADS; i++) {
             if (threads[i] != nullptr) {
                 threadsAtivas[quantidade++] = threads[i];
             }
@@ -156,7 +173,7 @@ int main() {
 
     //libera os trem
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < NTHREADS; i++) {
         if (threads[i] != nullptr) {
             CloseHandle(threads[i]);
         }
