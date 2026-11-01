@@ -103,7 +103,9 @@ void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &pro
 
 	if (eventos.eventoDeEncerramentoDosProcessosFilhos != nullptr) {
 
-		SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
+		if (!SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos)) {
+			std::cout << "Erro ao sinalizar o evento de encerramento dos processos-filhos. Código de saída: " << GetLastError() << std::endl;
+		};
 
 		for (auto& [processo, nomeDoProcesso] : processos) {
 
@@ -126,9 +128,12 @@ void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &pro
 					}
 
 					std::cout << "Processo " << nomeDoProcesso << " finalizado com sucesso." << std::endl;
-				}
-				else if (waitResult == WAIT_FAILED) {
+
+				} else if (waitResult == WAIT_FAILED) {
 					std::cout << "Erro ao aguardar o encerramento do processo " << nomeDoProcesso << ". Código de saída: " << GetLastError() << std::endl;
+
+				} else {
+					std::cout << "Resultado inesperadoao aguardar processo " << nomeDoProcesso << " encerrar." << std::endl;
 				}
 			}
 			
@@ -138,6 +143,7 @@ void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &pro
 		eventos.eventoDeEncerramentoDosProcessosFilhos = nullptr;
 
 	} else {
+		std::cout << "Handle do evento de encerramento inválido." << std::endl;
 		return;
 	}
 }
@@ -168,6 +174,8 @@ unsigned __stdcall monitorarProcessosFilhos(void* param) {
 
 				std::cout << "O processo-filho " << index + 1 << " finalizou prematuramente. Código de saída: " << threadSecundariaExitCode << std::endl;
 				SetEvent(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
+
+
 			}
 			// Se o programa não cai no if acima, é porque o procedimento padrão de encerramento dos processos-filhos foi iniciado
 
