@@ -91,9 +91,9 @@ unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
     if (eventoDeEncerramento == nullptr) {
         std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
         return 1;
-    }
 
-    if (eventoDeEncerramento != nullptr) {
+    } else {
+
         DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
         if (result == WAIT_OBJECT_0) {
@@ -161,33 +161,44 @@ int main() {
     }
 
     //encerra threads
-    while (!kbhit()) { // Aguarda que o usuário forneça uma entrada. Sai do loop assim que recebe a mesma
+   if (threadsCriadas == NTHREADS) {
+        std::cout << "\nProcesso Produtor em execução." << std::endl;
+        //std::cout << "Pressione qualquer tecla para encerrar o teste." << std::endl;
+        //_getch(); //tem que ver isso aqui
 
-        if (threadsCriadas == NTHREADS) {
-            std::cout << "\nProcesso Produtor em execução." << std::endl;
-            std::cout << "Pressione qualquer tecla para encerrar o teste." << std::endl;
-            //_getch(); //tem que ver isso aqui
+        DWORD waitThreadDeMonitoramento = WaitForSingleObject(threads[3], INFINITE); // Espera que a thread de monitoramento detecte a operação do programa principal
+
+        if (waitThreadDeMonitoramento == WAIT_OBJECT_0) {
+
+            std::cout << "O processo principal solicitou o encerramento dos processos-filhos." << std::endl;
+            // Sinaliza o encerramento das tarefas
+            SetEvent(CloseEvent);
+
+        } else {
+            std::cout << "Erro ao aguardar a sinalização da thread de monitoramento. Código de saída: " << GetLastError() << std::endl;
         }
-    }
 
-    WaitForSingleObject(threads[3], INFINITE); // Espera que a thread de monitoramento detecte a operação do programa principal
+        // Aguarda todas as threads que foram criadas
+        if (threadsCriadas > 0) {
 
-    // Sinaliza o encerramento das tarefas
-    SetEvent(CloseEvent);
+            HANDLE threadsAtivas[NTHREADS];
+            int quantidade = 0;
 
-    // Aguarda todas as threads que foram criadas
-    if (threadsCriadas > 0) {
+            for (int i = 0; i < NTHREADS; i++) {
+                if (threads[i] != nullptr) {
+                    threadsAtivas[quantidade++] = threads[i];
+                }
+            }
 
-        HANDLE threadsAtivas[NTHREADS];
-        int quantidade = 0;
+            DWORD waitDemaisThreads = WaitForMultipleObjects(quantidade,threadsAtivas,TRUE,INFINITE);
 
-        for (int i = 0; i < NTHREADS; i++) {
-            if (threads[i] != nullptr) {
-                threadsAtivas[quantidade++] = threads[i];
+            if (waitDemaisThreads == WAIT_OBJECT_0) {
+                std::cout << "Demais threads devidamente sinalizadas." << std::endl;
+            }
+            else {
+                std::cout << "Erro ao aguardar a sinalização das demais threads. Código de saída: " << GetLastError() << std::endl;
             }
         }
-
-        WaitForMultipleObjects(quantidade,threadsAtivas,TRUE,INFINITE);
     }
 
     //libera os trem

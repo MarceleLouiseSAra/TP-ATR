@@ -382,8 +382,15 @@ int main() {
 	//               E FECHA SEU HANDLE
 	//--------------------------------------------------
 
-	WaitForSingleObject(threadSecundaria, INFINITE);
-	CloseHandle(threadSecundaria);
+	DWORD waitThreadSecundaria = WaitForSingleObject(threadSecundaria, INFINITE);
+
+	if (waitThreadSecundaria == WAIT_OBJECT_0) {
+		std::cout << "Thread secundária devidamente encerrada. Fechando seu handle." << std::endl;
+		CloseHandle(threadSecundaria);
+	}
+	else {
+		std::cout << "Erro ao aguardar a sinalização da thread secundária. Código de saída: " << GetLastError() << std::endl;
+	}
 
 	return 0;
 }

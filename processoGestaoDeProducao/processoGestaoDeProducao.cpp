@@ -14,9 +14,9 @@ unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
 	if (eventoDeEncerramento == nullptr) {
 		std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
 		return 1;
-	}
 
-	if (eventoDeEncerramento != nullptr) {
+	} else {
+
 		DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
 		if (result == WAIT_OBJECT_0) {
