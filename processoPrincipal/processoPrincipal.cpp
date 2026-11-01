@@ -31,7 +31,7 @@ int tecla = 0;
 struct processo {
 	bool processStatus = false;
 	STARTUPINFO si;
-	PROCESS_INFORMATION newProcessInfo;
+	PROCESS_INFORMATION newProcessInfo = {};
 	std::string processName = "";
 	std::wstring processPath = L"";
 };
@@ -101,29 +101,45 @@ bool inicializarProcesso(processo &processo) {
 }
 
 void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &processos) {
+
 	if (eventos.eventoDeEncerramentoDosProcessosFilhos != nullptr) {
 
 		SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
 		for (auto& [processo, nomeDoProcesso] : processos) {
-			
-			WaitForSingleObject((*processo).newProcessInfo.hProcess, INFINITE); // Espera o encerramento de um processo-filho de cada vez
-			
-			if ((*processo).newProcessInfo.hThread != nullptr) { // Verifica se o handle da thread do processo-filho está preenchido
-				// Se sim, fecha-se o handle
-				CloseHandle((*processo).newProcessInfo.hThread);
-				(*processo).newProcessInfo.hThread = nullptr;
-			}
 
-			if ((*processo).newProcessInfo.hProcess != nullptr) { // Verifica se o handle do processo-filho está preenchido
-				// Se sim, fecha-se o handle
-				CloseHandle((*processo).newProcessInfo.hProcess);
-				(*processo).newProcessInfo.hProcess = nullptr;
+			if ((*processo).newProcessInfo.hProcess != nullptr) {
+
+				DWORD waitResult = WaitForSingleObject((*processo).newProcessInfo.hProcess, INFINITE); // Espera o encerramento de um processo-filho de cada vez
+			
+				if (waitResult == WAIT_OBJECT_0) {
+
+					if ((*processo).newProcessInfo.hThread != nullptr) { // Verifica se o handle da thread do processo-filho está preenchido
+						// Se sim, fecha-se o handle
+						CloseHandle((*processo).newProcessInfo.hThread);
+						(*processo).newProcessInfo.hThread = nullptr;
+					}
+
+					if ((*processo).newProcessInfo.hProcess != nullptr) { // Verifica se o handle do processo-filho está preenchido
+						// Se sim, fecha-se o handle
+						CloseHandle((*processo).newProcessInfo.hProcess);
+						(*processo).newProcessInfo.hProcess = nullptr;
+					}
+
+					std::cout << "Processo " << nomeDoProcesso << " finalizado com sucesso." << std::endl;
+				}
+				else if (waitResult == WAIT_FAILED) {
+					std::cout << "Erro ao aguardar o encerramento do processo " << nomeDoProcesso << ". Código de saída: " << GetLastError() << std::endl;
+				}
 			}
+			
 		}
 
 		CloseHandle(eventos.eventoDeEncerramentoDosProcessosFilhos);
 		eventos.eventoDeEncerramentoDosProcessosFilhos = nullptr;
+
+	} else {
+		return;
 	}
 }
 
@@ -184,7 +200,7 @@ void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& proce
 		tecla = _getch(); // Captura a entrada fornecida pelo usuário
 
 		DWORD falhaPrematuraDeUmProcessoFilho = WaitForSingleObject(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho,
-																	0);
+																	0); // Retorna imediatamente
 
 		if (falhaPrematuraDeUmProcessoFilho == WAIT_OBJECT_0) {
 
@@ -246,16 +262,16 @@ int main() {
 	//--------------------------------------------------
 
 	eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho = CreateEventW(nullptr,
-		true,
-		false,
-		nullptr);
+																		  true,
+																		  false,
+																		  L"eventoDeEncerramentoPrematuroDeUmProcessoFilho");
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
 
 	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr,
-																 true,
-																 false,
-																 L"eventoDeEncerramentoDosProcessosFilhos");
+																  true,
+																  false,
+																  L"eventoDeEncerramentoDosProcessosFilhos");
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
@@ -302,6 +318,7 @@ int main() {
 	bool inicializacaoBemSucedida = true;
 
 	for (auto& [processo, nomeDoProcesso] : processos) {
+
 		if (inicializarProcesso(*processo)) {
 			// Se a inicialização for bem-sucedida, adiciona o handle do processo à estrutura 
 			handlesDosProcessos.push_back((*processo).newProcessInfo.hProcess);
@@ -313,7 +330,6 @@ int main() {
 
 	// Rotina de limpeza como tratamento para inicialização mal-sucedida
 	if (!inicializacaoBemSucedida) {
-
 		encerrarProcessosFilhos(processos);
 		return 1;
 	}
