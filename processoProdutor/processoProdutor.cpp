@@ -212,7 +212,7 @@ int main() {
                 std::cout << "Erro ao aguardar a finalização das demais threads. Código de saída: " << GetLastError() << std::endl;
 
             } else {
-                std::cout << "Resultado inesperado ao agurdar o término das demais threads." << std::endl;
+                std::cout << "Resultado inesperado ao aguardar o término das demais threads." << std::endl;
             }
         }
     }
