@@ -100,29 +100,30 @@ bool inicializarProcesso(processo &processo) {
 
 }
 
-void fecharHandleDoProcesso(processo& processo) {
-	if (processo.newProcessInfo.hThread != NULL) { // Verifica se o handle da thread do processo-filho está preenchido
-		// Se sim, fecha-se o handle
-		CloseHandle(processo.newProcessInfo.hThread);
-	}
-
-	if (processo.newProcessInfo.hProcess != NULL) { // Verifica se o handle do processo-filho está preenchido
-		// Se sim, fecha-se o handle
-		CloseHandle(processo.newProcessInfo.hProcess);
-	}
-}
-
-void encerrarProcessosFilhos() {
+void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &processos) {
 	if (eventos.eventoDeEncerramentoDosProcessosFilhos != nullptr) {
 
 		SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
-		for (HANDLE handleDeUmProcesso : handlesDosProcessos) {
-			WaitForSingleObject(handleDeUmProcesso, INFINITE); // Espera o encerramento de um processo-filho de cada vez
-			CloseHandle(handleDeUmProcesso);
+		for (auto& [processo, nomeDoProcesso] : processos) {
+			
+			WaitForSingleObject((*processo).newProcessInfo.hProcess, INFINITE); // Espera o encerramento de um processo-filho de cada vez
+			
+			if ((*processo).newProcessInfo.hThread != nullptr) { // Verifica se o handle da thread do processo-filho está preenchido
+				// Se sim, fecha-se o handle
+				CloseHandle((*processo).newProcessInfo.hThread);
+				(*processo).newProcessInfo.hThread = nullptr;
+			}
+
+			if ((*processo).newProcessInfo.hProcess != nullptr) { // Verifica se o handle do processo-filho está preenchido
+				// Se sim, fecha-se o handle
+				CloseHandle((*processo).newProcessInfo.hProcess);
+				(*processo).newProcessInfo.hProcess = nullptr;
+			}
 		}
 
 		CloseHandle(eventos.eventoDeEncerramentoDosProcessosFilhos);
+		eventos.eventoDeEncerramentoDosProcessosFilhos = nullptr;
 	}
 }
 
@@ -130,12 +131,14 @@ void encerrarProcessosFilhos() {
 //   FUNÇÃO DE MONITORAMENTO DOS PROCESSOS-FILHOS
 //--------------------------------------------------
 
-unsigned __stdcall monitorarProcesso(void* param) {
+unsigned __stdcall monitorarProcessosFilhos(void* param) {
 
 	std::cout << "Thread secundária iniciou o monitoramento dos processos-filhos." << std::endl;
 
+	auto* handles = static_cast<std::vector<HANDLE>*>(param);
+
 	DWORD waitResult = WaitForMultipleObjects(processesNumber, 
-											  (HANDLE*)param,
+											  (*handles).data(),
 											  FALSE,
 											  INFINITE);
 
@@ -144,10 +147,10 @@ unsigned __stdcall monitorarProcesso(void* param) {
 
 		DWORD threadSecundariaExitCode;
 
-		if (GetExitCodeThread(((HANDLE*)param)[index], &threadSecundariaExitCode)) {
+		if (GetExitCodeThread((*handles)[index], &threadSecundariaExitCode)) {
 
 			std::cout << "O processo-filho " << index + 1 << " finalizou prematuramente. Código de saída: " << threadSecundariaExitCode << std::endl;
-			encerrarProcessosFilhos();
+			SetEvent(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
 
 		} else {
 			std::cout << "Erro ao obter o código de saída do processo-filho " << index + 1 << ". Código: " << GetLastError() << std::endl;
@@ -162,7 +165,7 @@ unsigned __stdcall monitorarProcesso(void* param) {
 //  FUNÇÃO DE EXIBIÇÃO DO MENU DE OPÇÕES DO SISTEMA
 //--------------------------------------------------
 
-void menu(evento& eventos) {
+void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& processos) {
 
 	do {
 		std::cout << "----------------------------------------" << std::endl;
@@ -186,7 +189,8 @@ void menu(evento& eventos) {
 		if (falhaPrematuraDeUmProcessoFilho == WAIT_OBJECT_0) {
 
 			std::cout << "Um dos processos-filhos falhou prematuramente. O sistema será encerrado." << std::endl;
-			SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
+			encerrarProcessosFilhos(processos);
+			return;
 
 		} else if (falhaPrematuraDeUmProcessoFilho == WAIT_FAILED) {
 
@@ -195,7 +199,7 @@ void menu(evento& eventos) {
 
 		if (tecla == ESC) {
 			std::cout << "O sistema está sendo encerrado." << std::endl;
-			SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
+			encerrarProcessosFilhos(processos);
 		}
 		else if (tecla == 's') {
 			SetEvent(eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio);
@@ -251,7 +255,7 @@ int main() {
 	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr,
 																 true,
 																 false,
-																 nullptr);
+																 L"eventoDeEncerramentoDosProcessosFilhos");
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
@@ -310,7 +314,7 @@ int main() {
 	// Rotina de limpeza como tratamento para inicialização mal-sucedida
 	if (!inicializacaoBemSucedida) {
 
-		encerrarProcessosFilhos();
+		encerrarProcessosFilhos(processos);
 		return 1;
 	}
 
@@ -325,7 +329,7 @@ int main() {
 
 	threadSecundaria = (HANDLE)_beginthreadex(NULL,
 						            0,
-						            monitorarProcesso,
+						            monitorarProcessosFilhos,
 									&handlesDosProcessos,
 						            0,
 						            (CAST_LPDWORD) &threadSecundariaId
@@ -342,7 +346,7 @@ int main() {
 	//		INTERAÇÃO DO USUÁRIO COM O SISTEMA
 	//--------------------------------------------------
 
-	menu(eventos); // Exibe o menu de opções do sistema e aguarda a entrada do usuário
+	menu(eventos, processos); // Exibe o menu de opções do sistema e aguarda a entrada do usuário
 
 	//--------------------------------------------------
 	//	 AGUARDA O TÉRMINO DA THREAD DE MONITORAMENTO
@@ -351,14 +355,6 @@ int main() {
 
 	WaitForSingleObject(threadSecundaria, INFINITE);
 	CloseHandle(threadSecundaria);
-
-	//--------------------------------------------------
-	//	    FECHA OS HANDLES DOS PROCESSOS FILHOS
-	//--------------------------------------------------
-
-	for (auto& [processo, nomeDoProcesso] : processos) {
-		fecharHandleDoProcesso(*processo);
-	}
 
 	return 0;
 }
