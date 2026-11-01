@@ -88,22 +88,37 @@ unsigned __stdcall tarefa3(void* param) {
 
 unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
 
+    if (eventoDeEncerramento == nullptr) {
+        std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
+        return 1;
+    }
+
     if (eventoDeEncerramento != nullptr) {
-        std::cout << "Evento de encerramento sinalizado. Encerrando o processo de exibição." << std::endl;
         DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
         if (result == WAIT_OBJECT_0) {
-            ExitProcess(0);
-        }
-        else {
+            std::cout << "Evento de encerramento sinalizado. Encerrando o processo produtor." << std::endl;
+        } else if (result == WAIT_FAILED) {
             std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
         }
     }
+
+    return 0;
 }
 
 int main() {
 
-    //evento de encerramento
+    //evento de encerramento externo
+    HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
+        FALSE,
+        L"eventoDeEncerramentoDosProcessosFilhos");
+
+    if (eventoDeEncerramento == nullptr) {
+        std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+        return 1;
+    }
+
+    //evento de encerramento interno
     HANDLE CloseEvent = CreateEventW(nullptr,TRUE,FALSE,nullptr);
 
     if (CloseEvent == nullptr) {
@@ -141,17 +156,21 @@ int main() {
         }
         else {
             std::cout << "Erro ao criar a thread da Tarefa " << i + 1 << ". Código: " << GetLastError() << std::endl;
+            return 1;
         }
     }
 
     //encerra threads
-    if (threadsCriadas == NTHREADS) {
-        std::cout << "\nProcesso Produtor em execução." << std::endl;
+    while (!kbhit()) { // Aguarda que o usuário forneça uma entrada. Sai do loop assim que recebe a mesma
 
-        std::cout << "Pressione qualquer tecla para encerrar o teste."<< std::endl;
-
-        _getch(); //tem que ver isso aqui
+        if (threadsCriadas == NTHREADS) {
+            std::cout << "\nProcesso Produtor em execução." << std::endl;
+            std::cout << "Pressione qualquer tecla para encerrar o teste." << std::endl;
+            //_getch(); //tem que ver isso aqui
+        }
     }
+
+    WaitForSingleObject(threads[3], INFINITE); // Espera que a thread de monitoramento detecte a operação do programa principal
 
     // Sinaliza o encerramento das tarefas
     SetEvent(CloseEvent);

@@ -163,18 +163,26 @@ unsigned __stdcall monitorarProcessosFilhos(void* param) {
 
 		DWORD threadSecundariaExitCode;
 
-		if (GetExitCodeThread((*handles)[index], &threadSecundariaExitCode)) {
+		if (GetExitCodeProcess((*handles)[index], &threadSecundariaExitCode)) { // Se GetExitCodeProcess() retornar true, significa apenas que a consulta foi bem-sucedida
 
-			std::cout << "O processo-filho " << index + 1 << " finalizou prematuramente. Código de saída: " << threadSecundariaExitCode << std::endl;
-			SetEvent(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
+			if (WaitForSingleObject(eventos.eventoDeEncerramentoDosProcessosFilhos, 0) == WAIT_TIMEOUT) {
+
+				std::cout << "O processo-filho " << index + 1 << " finalizou prematuramente. Código de saída: " << threadSecundariaExitCode << std::endl;
+				SetEvent(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
+			}
+			// Se o programa não cai no if acima, é porque o procedimento padrão de encerramento dos processos-filhos foi iniciado
 
 		} else {
 			std::cout << "Erro ao obter o código de saída do processo-filho " << index + 1 << ". Código: " << GetLastError() << std::endl;
 		}
 
+		return 1;
+
 	} else {
 		std::cout << "Erro no monitoramento dos processos-filhos. Código: " << GetLastError() << std::endl;
 	}
+
+	return 0;
 }
 
 //--------------------------------------------------
@@ -197,21 +205,26 @@ void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& proce
 		std::cout << "Digite 'ESC' para sair." << std::endl;
 		std::cout << "----------------------------------------" << std::endl;
 
-		tecla = _getch(); // Captura a entrada fornecida pelo usuário
+		while (!kbhit()) { // Aguarda que o usuário forneça uma entrada. Enquanto isso não acontece, monitora-se o estado dos processos-filhos
 
-		DWORD falhaPrematuraDeUmProcessoFilho = WaitForSingleObject(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho,
-																	0); // Retorna imediatamente
+			DWORD falhaPrematuraDeUmProcessoFilho = WaitForSingleObject(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho,
+																		0); // Retorna imediatamente
 
-		if (falhaPrematuraDeUmProcessoFilho == WAIT_OBJECT_0) {
+			if (falhaPrematuraDeUmProcessoFilho == WAIT_OBJECT_0) {
 
-			std::cout << "Um dos processos-filhos falhou prematuramente. O sistema será encerrado." << std::endl;
-			encerrarProcessosFilhos(processos);
-			return;
+				std::cout << "Um dos processos-filhos falhou prematuramente. O sistema será encerrado." << std::endl;
+				encerrarProcessosFilhos(processos);
+				return;
 
-		} else if (falhaPrematuraDeUmProcessoFilho == WAIT_FAILED) {
+			} else if (falhaPrematuraDeUmProcessoFilho == WAIT_FAILED) {
 
-			std::cout << "Erro ao aguardar o evento de falha prematura de um processo-filho. Código de saída: " << GetLastError() << std::endl;
+				std::cout << "Erro ao aguardar o evento de falha prematura de um processo-filho. Código de saída: " << GetLastError() << std::endl;
+			}
+
+			Sleep(100); // Aguarda 100ms antes de verificar novamente
 		}
+
+		tecla = _getch(); // Captura a entrada fornecida pelo usuário
 
 		if (tecla == ESC) {
 			std::cout << "O sistema está sendo encerrado." << std::endl;

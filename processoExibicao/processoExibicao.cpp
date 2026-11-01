@@ -11,17 +11,22 @@
 
 unsigned __stdcall monitorarEncerramento(HANDLE eventoDeEncerramento) {
 
+	if (eventoDeEncerramento == nullptr) {
+		std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
+		return 1;
+	}
+
 	if (eventoDeEncerramento != nullptr) {
-		std::cout << "Evento de encerramento sinalizado. Encerrando o processo de exibição." << std::endl;
 		DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
 		if (result == WAIT_OBJECT_0) {
-			ExitProcess(0);
-		}
-		else {
+			std::cout << "Evento de encerramento sinalizado. Encerrando o processo de exibição." << std::endl;
+		} else if (result == WAIT_FAILED) {
 			std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
 		}
 	}
+
+	return 0;
 }
 
 int main() {
@@ -30,6 +35,11 @@ int main() {
 	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
 											 FALSE,
 										 	 L"eventoDeEncerramentoDosProcessosFilhos");
+
+	if (eventoDeEncerramento == nullptr) {
+		std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+		return 1;
+	}
 
 	monitorarEncerramento(eventoDeEncerramento);
 
