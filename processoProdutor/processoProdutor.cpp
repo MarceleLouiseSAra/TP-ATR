@@ -8,13 +8,67 @@
 
 #include "Buffer1.h"
 
+#define NTHREADS 4
+#define NOME_MAISLOT L"\\\\.\\mailslot\\mailslotTeste"
+
 // Estrutura com os dados compartilhados entre as threads
 struct DadosCompartilhados {
     Buffer1* buffer;
     HANDLE CloseEvent;
 };
 
-#define NTHREADS 4
+struct mensagem {
+    int codigo;
+    char conteudo[256];
+};
+
+
+HANDLE abrirMailslot() {
+    HANDLE mailslot = CreateFileW(
+        NOME_MAISLOT,
+        GENERIC_WRITE,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+    );
+
+	if (mailslot == INVALID_HANDLE_VALUE) {
+		std::cout << "Erro ao abrir o mailslot. Código de saída: " << GetLastError() << std::endl;
+		return INVALID_HANDLE_VALUE;
+	}
+	else {
+		std::cout << "Comunicação entre processos via mailslot estabelecida com sucesso." << std::endl;
+		return mailslot;
+	}
+
+}
+
+bool enviarMensagem(HANDLE mailslotHandle, const mensagem& Mensagem) {
+
+	if (mailslotHandle == INVALID_HANDLE_VALUE) {
+		std::cout << "Handle do mailslot inválido." << std::endl;
+		return false;
+	}
+
+	DWORD bytesEscritos;
+
+	bool escritaBemSucedida = WriteFile(
+		mailslotHandle,
+		&Mensagem,
+		sizeof(mensagem),
+		&bytesEscritos,
+		nullptr
+	);
+
+	if (!escritaBemSucedida || bytesEscritos != sizeof(mensagem)) {
+		std::cout << "Erro ao enviar mensagem para o mailslot. Código de saída: " << GetLastError() << std::endl;
+		return false;
+	}
+
+	return true;
+}
 
 //              TAREFA 1 - SUPERVISÓRIO
 
@@ -114,8 +168,8 @@ int main() {
 
     //evento de encerramento externo
     HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
-                                             FALSE,
-                                             L"eventoDeEncerramentoDosProcessosFilhos");
+        FALSE,
+        L"eventoDeEncerramentoDosProcessosFilhos");
 
     if (eventoDeEncerramento == nullptr) {
         std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
@@ -123,14 +177,14 @@ int main() {
     }
 
     //evento de encerramento interno
-    HANDLE CloseEvent = CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    HANDLE CloseEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
     if (CloseEvent == nullptr) {
         std::cout << "Erro ao criar evento de encerramento. Código: " << GetLastError() << std::endl;
         return 1;
     }
 
-   //inicilaiza o buffer
+    //inicilaiza o buffer
 
     Buffer1 buffer(CloseEvent);
 
@@ -143,11 +197,11 @@ int main() {
     HANDLE threads[NTHREADS] = {};
     unsigned threadIds[NTHREADS] = {};
 
-    threads[0] = (HANDLE)_beginthreadex(nullptr, 0, tarefa1, &dados, 0, &threadIds[0] );
+    threads[0] = (HANDLE)_beginthreadex(nullptr, 0, tarefa1, &dados, 0, &threadIds[0]);
 
-    threads[1] = (HANDLE)_beginthreadex(nullptr, 0, tarefa2, &dados, 0, &threadIds[1] );
+    threads[1] = (HANDLE)_beginthreadex(nullptr, 0, tarefa2, &dados, 0, &threadIds[1]);
 
-    threads[2] = (HANDLE)_beginthreadex(nullptr, 0, tarefa3, &dados, 0, &threadIds[2] );
+    threads[2] = (HANDLE)_beginthreadex(nullptr, 0, tarefa3, &dados, 0, &threadIds[2]);
 
     threads[3] = (HANDLE)_beginthreadex(nullptr, 0, monitorarEncerramento, eventoDeEncerramento, 0, &threadIds[3]);
 
@@ -163,6 +217,20 @@ int main() {
             SetEvent(CloseEvent);
         }
     }
+
+    // Abre a conexão com o processo de gestão de produção via mailslot
+
+    HANDLE mailslotHandle = abrirMailslot();
+
+    if (mailslotHandle == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+
+    mensagem Mensagem{};
+
+    // ...
+
+	enviarMensagem(mailslotHandle, Mensagem);
 
    //encerra threads
    if (threadsCriadas == NTHREADS) {
@@ -228,6 +296,7 @@ int main() {
     //buffer.CloseHandles(); closehandles é privado
 
     CloseHandle(CloseEvent);
+    CloseHandle(mailslotHandle);
 
     std::cout << "\nProcesso Produtor encerrado." << std::endl;
 

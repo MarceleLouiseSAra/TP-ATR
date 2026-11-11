@@ -37,6 +37,8 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 }
 
 int main() {
+
+	SetConsoleOutputCP(CP_UTF8); // Configura a saída do console para UTF-8
     std::cout << "Este é o processo de exibição.\n";
 
 	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,

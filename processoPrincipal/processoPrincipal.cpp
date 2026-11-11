@@ -30,8 +30,9 @@ int tecla = 0;
 
 struct processo {
 	bool processStatus = false;
-	STARTUPINFO si;
-	PROCESS_INFORMATION newProcessInfo = {};
+	STARTUPINFO si{};
+	PROCESS_INFORMATION newProcessInfo{};
+	DWORD creationFlag = 0;
 	std::string processName = "";
 	std::wstring processPath = L"";
 };
@@ -82,7 +83,7 @@ bool inicializarProcesso(processo &processo) {
 		NULL,                         // Atributos de segurança do processo
 		NULL,                         // Atributos de segurança da thread
 		FALSE,                        // Herança de identificadores
-		NORMAL_PRIORITY_CLASS,        // Flags de criação
+		processo.creationFlag,        // Flags de criação
 		NULL,                         // Ambiente do novo processo
 		NULL,                         // Diretório de trabalho do novo processo
 		&processo.si,                 // Informações de inicialização
@@ -336,6 +337,10 @@ int main() {
 	//		    INICIALIZAÇÃO DOS EXECUTÁVEIS 
 	//			    DOS PROCESSOS FILHOS
 	//--------------------------------------------------
+
+	Produtor.creationFlag = 0;
+	Exibicao.creationFlag = CREATE_NEW_CONSOLE;
+	GestaoDeProducao.creationFlag = CREATE_NEW_CONSOLE;
 
 	bool inicializacaoBemSucedida = true;
 
