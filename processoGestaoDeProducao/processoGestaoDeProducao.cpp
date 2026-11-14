@@ -98,7 +98,7 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 	HANDLE eventoDeEncerramento = static_cast<HANDLE>(param);
 
 	if (eventoDeEncerramento == nullptr) {
-		std::cout << "Hanlde do evento inválido. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "Handle do evento inválido. Código de saída: " << GetLastError() << std::endl;
 		return 1;
 
 	} else {

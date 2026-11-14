@@ -109,25 +109,25 @@ HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter cria
 
 }
 
-bool enviarMensagem(HANDLE mailslotHandle, const mensagemPCP& Mensagem) {
+bool enviarMensagem(HANDLE mailslotHandle, const std::string& mensagem) {
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
 		std::cout << "Handle do mailslot inválido." << std::endl;
 		return false;
 	}
 
-	DWORD bytesEscritos;
+	DWORD bytesEscritos = 0;
 
 	bool escritaBemSucedida = WriteFile(
 		mailslotHandle,
-		&Mensagem,
-		sizeof(mensagemPCP),
+		mensagem.data(),
+		static_cast<DWORD>(mensagem.size()),
 		&bytesEscritos,
 		nullptr
 	);
 
-	if (!escritaBemSucedida || bytesEscritos != sizeof(mensagemPCP)) {
-		std::cout << "Erro ao enviar mensagem para o mailslot. Código de saída: " << GetLastError() << std::endl;
+	if (!escritaBemSucedida || bytesEscritos != mensagem.size()) {
+		std::cout << "[Tarefa 3] Erro ao enviar mensagem para o mailslot. Código de saída: " << GetLastError() << std::endl;
 		return false;
 	}
 
@@ -221,8 +221,29 @@ unsigned __stdcall tarefa3(void* param) {
 
     while (dados->buffer->Remove(mensagem)) {
 
-        std::cout << "[Tarefa 3] Mensagem recebida: "
-                  << mensagem << std::endl;
+        size_t separador = mensagem.find('/');
+
+        if (separador == std::string::npos) {
+            std::cout << "[Tarefa1 3] Mensagem inválida: " << mensagem << std::endl;
+            continue;
+        }
+
+        std::string tipoDaMensagem = mensagem.substr(0, separador);
+
+        if (tipoDaMensagem == "1") {
+            // Encaminhar mensagem para o 2º buffer
+        } else if (tipoDaMensagem == "2") {
+            // Encaminhar a mensagem para o processo de gestão de produção, por meio do mailslot
+
+            if (enviarMensagem((*dados).mailslotHandle, mensagem)) {
+                std::cout << "[Tarefa 3] Mensagem PCP encaminhada ao processo de gestão de produção: " << mensagem << std::endl;
+            } else {
+                std::cout << "[Tarefa 3] Erro ao encaminhar a mensagem ao processo de gestão de produção." << std::endl;
+            }
+
+        } else {
+            std::cout << "[Tarefa1 3] Tipo da mensagem desconhecido: " << mensagem << std::endl;
+        }
     }
 
     std::cout << "Tarefa 3 encerrada." << std::endl;
