@@ -371,11 +371,11 @@ int main() {
 	DWORD threadSecundariaId;
 
 	threadSecundaria = (HANDLE)_beginthreadex(NULL,
-						            0,
-						            monitorarProcessosFilhos,
-									&handlesDosProcessos,
-						            0,
-						            (CAST_LPDWORD) &threadSecundariaId
+											  0,
+											  monitorarProcessosFilhos,
+											  &handlesDosProcessos,
+											  0,
+											  (CAST_LPDWORD) &threadSecundariaId
 	);
 
 	if (threadSecundaria) {

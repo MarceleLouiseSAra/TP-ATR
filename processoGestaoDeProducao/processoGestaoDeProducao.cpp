@@ -11,6 +11,8 @@
 
 #define NOME_MAISLOT L"\\\\.\\mailslot\\comunicacaoPCP"
 
+typedef unsigned* CAST_LPDWORD;
+
 struct mensagem {
 	int codigo;
 	char conteudo[256];
@@ -24,7 +26,7 @@ struct mensagemPCP {
 	char OP[8];                    // Número da Ordem de Produção (OP) em execução
 };
 
-HANDLE criarMailslot() {
+HANDLE criarMailslot(HANDLE eventoCriacaoMailSlot) {
 
 	HANDLE mailslotHandle = CreateMailslotW(
 		NOME_MAISLOT,
@@ -34,20 +36,31 @@ HANDLE criarMailslot() {
 	);
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
-		std::cout << "Erro ao criar o mailslot. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "Erro ao criar o mailslot no processo de gestão de produção. Código de saída: " << GetLastError() << std::endl;
 		return INVALID_HANDLE_VALUE;
 	} else {
 		std::cout << "Mailslot criado com sucesso." << std::endl;
+
+		if (!SetEvent(eventoCriacaoMailSlot)) {
+			std::cout << "Erro ao sinalizar o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
+			return INVALID_HANDLE_VALUE;
+		}
+		else {
+			std::cout << "Evento de criação do mailslot sinalizado com sucesso." << std::endl;
+		}
+
 		return mailslotHandle;
 	}
 
 }
 
-void receberMensagens(HANDLE mailslotHandle) {
+unsigned __stdcall receberMensagens(void* param) {
+
+	HANDLE mailslotHandle = static_cast<HANDLE>(param);
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
 		std::cout << "Handle do mailslot inválido. Código de saída: " << GetLastError() << std::endl;
-		return;
+		return 1;
 	}
 
 	DWORD tamanhoDaMensagem;
@@ -82,14 +95,14 @@ void receberMensagens(HANDLE mailslotHandle) {
 
 			if (!leituraBemSucedida) {
 				std::cout << "Erro ao ler mensagem do mailslot. Código de saída: " << GetLastError() << std::endl;
-				break;
+				return 1;
 
 			} else {
 				std::cout << "Mensagem recebida: " << "" << std::endl;
 			}
 		}
 
-		Sleep(50);
+		return 0;
 	}
 }
 
@@ -106,12 +119,10 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 		DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
 		if (result == WAIT_OBJECT_0) {
-
 			std::cout << "Evento de encerramento sinalizado. Encerrando o processo de gestão de produção." << std::endl;
 			return 0;
 
 		} else if (result == WAIT_FAILED) {
-
 			std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
 			return 1;
 		}
@@ -133,21 +144,81 @@ int main() {
 		return 1;
 	}
 
+	HANDLE eventoCriacaoMailSlot = CreateEventW(nullptr,
+								   true,
+								   false,
+								   L"eventoCriacaoMailSlot");
+
+	if (eventoCriacaoMailSlot == nullptr) {
+		std::cout << "Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
+		return 1;
+	}
+
+	HANDLE mailslotHandle = criarMailslot(eventoCriacaoMailSlot);
+
+	if (mailslotHandle == INVALID_HANDLE_VALUE) { 
+		return 1;
+	}
+
+	//--------------------------------------------------
+	//	        CRIAÇÃO DE THREADS SECUNDÁRIAS
+	//--------------------------------------------------
+	
+	// Criação de uma thread de monitoramento do evento de encerramento
+	HANDLE threadDeMonitoramento;
+	DWORD threadDeMonitoramentoId;
+
+	threadDeMonitoramento = (HANDLE)_beginthreadex(NULL,
+												   0,
+												   monitorarEncerramento,
+												   eventoDeEncerramento,
+												   0,
+												   (CAST_LPDWORD)&threadDeMonitoramentoId
+	);
+
+	if (threadDeMonitoramento) {
+		std::cout << "Thread de monitoramento criada com sucesso. ID da thread: " << threadDeMonitoramentoId << std::endl;
+	}
+	else {
+		std::cout << "Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
+	}
+
+	// Criação de uma thread para receber mensagens do mailslot
+	HANDLE threadReceptora;
+	DWORD threadReceptoraId;
+
+	threadReceptora = (HANDLE)_beginthreadex(NULL,
+		0,
+		monitorarEncerramento,
+		eventoDeEncerramento,
+		0,
+		(CAST_LPDWORD)&threadReceptoraId
+	);
+
+	if (threadReceptora) {
+		std::cout << "Thread recptora criada com sucesso. ID da thread: " << threadReceptoraId << std::endl;
+	}
+	else {
+		std::cout << "Erro na criação da thread recptora. Código: " << GetLastError() << std::endl;
+	}
+
+	//--------------------------------------------------
+	//	     	 AGUARDA O TÉRMINO DAS THREADS
+	//			     E FECHA SEUS HANDLES
+	//--------------------------------------------------
+
+
+
+	//--------------------------------------------------
+	//    FECHA OS HANDLES DOS EVENTOS E MAILSLOT
+	//--------------------------------------------------
+
 	unsigned int resultadoDeMonitorarEncerramento = monitorarEncerramento(eventoDeEncerramento);
 
 	if (resultadoDeMonitorarEncerramento == 0) {
 		std::cout << "Processo de gestão de produção encerrado idealmente." << std::endl;
 	} else {
 		std::cout << "O processo de gestão de produção foi encerrado com erro." << std::endl;
-	}
-
-	HANDLE mailslotHandle = criarMailslot();
-
-	if (mailslotHandle == INVALID_HANDLE_VALUE) { 
-		return 1;
-
-	} else {
-		receberMensagens(mailslotHandle);
 	}
 
 	CloseHandle(eventoDeEncerramento);

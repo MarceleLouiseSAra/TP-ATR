@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <conio.h>		// _getch
 
+typedef unsigned *CAST_LPDWORD;
+
 unsigned __stdcall monitorarEncerramento(void* param) {
 
 	HANDLE eventoDeEncerramento = static_cast<HANDLE>(param);

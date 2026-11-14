@@ -88,6 +88,9 @@ std::string formatarMensagem(const mensagemPCP& mensagem) {
 // 8 sobrecarga de funções: a partir do parâmetro, o compilador decide quem chamar
 
 HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter criado o mailslot antes do produtor tentar abri-lo
+
+    std::cout << "[Produtor] Tentando estabelecer comunicação via mailslot..." << std::endl;
+
     HANDLE mailslot = CreateFileW(
         NOME_MAISLOT,
         GENERIC_WRITE,
@@ -99,10 +102,9 @@ HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter cria
     );
 
 	if (mailslot == INVALID_HANDLE_VALUE) {
-		std::cout << "Erro ao abrir o mailslot. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "Erro ao tentar estabelecer a comunicação via mailslot no processo produtor. Código de saída: " << GetLastError() << std::endl;
 		return INVALID_HANDLE_VALUE;
-	}
-	else {
+	} else {
 		std::cout << "Comunicação entre processos via mailslot estabelecida com sucesso." << std::endl;
 		return mailslot;
 	}
@@ -277,16 +279,6 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 
 int main() {
 
-    //evento de encerramento externo
-    HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
-        FALSE,
-        L"eventoDeEncerramentoDosProcessosFilhos");
-
-    if (eventoDeEncerramento == nullptr) {
-        std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
-        return 1;
-    }
-
     //evento de encerramento interno
     HANDLE CloseEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
@@ -295,11 +287,31 @@ int main() {
         return 1;
     }
 
+    //evento de encerramento externo
+    HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
+                                             FALSE,
+                                             L"eventoDeEncerramentoDosProcessosFilhos");
+
+    if (eventoDeEncerramento == nullptr) {
+        std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+        return 1;
+    }
+
+    /*HANDLE eventoCriacaoMailSlot = OpenEventW(SYNCHRONIZE,
+                                             FALSE,
+                                             L"eventoCriacaoMailSlot");
+
+    if (eventoCriacaoMailSlot == nullptr) {
+        std::cout << "Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
+        return 1;
+    }*/
+
     // Abre a conexão com o processo de gestão de produção via mailslot
+	WaitForSingleObject(eventoDeEncerramento, 10000); // Aguarda o sinal do evento de criação do mailslot antes de tentar abrir o mailslot
     HANDLE mailslotHandle = abrirMailslot();
 
     if (mailslotHandle == INVALID_HANDLE_VALUE) {
-        std::cout << "Erro ao criar mailslot. Código de saída: " << GetLastError() << std::endl;
+        std::cout << "Erro ao abrir mailslot. Código de saída: " << GetLastError() << std::endl;
         return 1;
     }
 
