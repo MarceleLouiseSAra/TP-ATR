@@ -9,15 +9,25 @@
 #include <filesystem>
 #include <conio.h>		// _getch
 
+#define NOME_MAISLOT L"\\\\.\\mailslot\\comunicacaoPCP"
+
 struct mensagem {
 	int codigo;
 	char conteudo[256];
 };
 
+struct mensagemPCP {
+	unsigned int TIPO = 2;         // Sempre "2"
+	unsigned int NSEQ;             // Número sequencial da mensagem
+	time_t HORA = time(nullptr);   // Hora prevista para início da OP
+	unsigned int DURACAO;          // Tempo previsto para execução da OP (minutos)
+	char OP[8];                    // Número da Ordem de Produção (OP) em execução
+};
+
 HANDLE criarMailslot() {
 
 	HANDLE mailslotHandle = CreateMailslotW(
-		L"\\\\.\\mailslot\\mailslotTeste",
+		NOME_MAISLOT,
 		0,									// Tamanho máximo da mensagem (0 significa tamanho ilimitado)
 		MAILSLOT_WAIT_FOREVER,				// Tempo de espera para leitura (infinito)
 		NULL								// Segurança padrão
@@ -44,7 +54,7 @@ void receberMensagens(HANDLE mailslotHandle) {
 	DWORD quantidadeDeMensagens;
 	DWORD bytesLidos;
 
-	mensagem Mensagem{};
+	mensagemPCP Mensagem{};
 
 	while(true) {
 		bool existemMensagens = GetMailslotInfo(
@@ -75,7 +85,7 @@ void receberMensagens(HANDLE mailslotHandle) {
 				break;
 
 			} else {
-				std::cout << "Mensagem recebida: " << Mensagem.conteudo << std::endl;
+				std::cout << "Mensagem recebida: " << "" << std::endl;
 			}
 		}
 

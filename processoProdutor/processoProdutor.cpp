@@ -1,6 +1,8 @@
 // processoProdutor.cpp : Este arquivo contém a função 'main'. A execução do programa começa e termina ali.
 //
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 #include <string>
 #include <windows.h>
 #include <process.h>
@@ -10,17 +12,17 @@
 #include "Buffer1.h"
 
 #define NTHREADS 4
-#define NOME_MAISLOT L"\\\\.\\mailslot\\mailslotTeste"
+#define NOME_MAISLOT L"\\\\.\\mailslot\\comunicacaoPCP"
+
+// "\\\\.\\" - Computador local
+// "mailslot\\" - mecaninismo de mailslot
+// "comunicacaoPCP" - nome do mailslot
 
 // Estrutura com os dados compartilhados entre as threads
 struct DadosCompartilhados {
     Buffer1* buffer;
     HANDLE CloseEvent;
-};
-
-struct mensagem {
-    int codigo;
-    char conteudo[256];
+    HANDLE mailslotHandle;
 };
 
 struct mensagemSupervisorio {
@@ -31,18 +33,61 @@ struct mensagemSupervisorio {
     float TZ1;                     // Temperatura da zona 1 do forno rotativo
     float TZ2;                     // Temperatura da zona 2 do forno rotativo
     float TZ3;                     // Temperatura da zona  do forno rotativo
-    time_t HORA = time(nullptr);   // Hora, minuto, segundo e milissegundo
+    std::string TIMESTAMP;         // Hora, minuto, segundo e milissegundo
 };
 
 struct mensagemPCP {
     unsigned int TIPO = 2;         // Sempre "2"
     unsigned int NSEQ;             // Número sequencial da mensagem
-    time_t HORA = time(nullptr);   // Hora prevista para início da OP
+    std::string HORA;              // Hora prevista para início da OP
     unsigned int DURACAO;          // Tempo previsto para execução da OP (minutos)
-    char OP[8];                    // Número da Ordem de Produção (OP) em execução
+    char OP[9];                    // Número da Ordem de Produção (OP) em execução
 };
 
-HANDLE abrirMailslot() {
+std::string formatarMensagem(const mensagemSupervisorio& mensagem) {
+    std::ostringstream stream;
+
+    stream << mensagem.TIPO << "/"
+        << std::setw(5) << std::setfill('0') << mensagem.NSEQ << "/"
+        << std::setw(5) << std::fixed << std::setprecision(1) << mensagem.TZ1 << "/"
+        << std::setw(5) << mensagem.TZ2 << "/"
+        << std::setw(5) << mensagem.TZ3 << "/"
+        << std::setw(5) << mensagem.VOL << "/"
+        << std::setw(5) << mensagem.PRES << "/"
+        << mensagem.TIMESTAMP;
+
+    std::string mensagemFormatada = stream.str();
+
+    if (mensagemFormatada.size() != 50) {
+        std::cout << "Ocorreu um erro na formatação." << std::endl;
+        return "";
+    }
+
+    return mensagemFormatada;
+}
+
+std::string formatarMensagem(const mensagemPCP& mensagem) {
+    
+    std::ostringstream stream;
+
+    stream << mensagem.TIPO << "/"
+        << std::setw(5) << std::setfill('0') << mensagem.NSEQ << "/"
+        << mensagem.OP << "/"
+        << mensagem.HORA << "/"
+        << std::setw(5) << std::setfill('0') << mensagem.DURACAO;
+
+    std::string mensagemFormatada = stream.str();
+
+    if (mensagemFormatada.size() != 31) {
+        std::cout << "Ocorreu um erro na formatação." << std::endl;
+        return "";
+    }
+
+    return mensagemFormatada;
+}
+// 8 sobrecarga de funções: a partir do parâmetro, o compilador decide quem chamar
+
+HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter criado o mailslot antes do produtor tentar abri-lo
     HANDLE mailslot = CreateFileW(
         NOME_MAISLOT,
         GENERIC_WRITE,
@@ -64,7 +109,7 @@ HANDLE abrirMailslot() {
 
 }
 
-bool enviarMensagem(HANDLE mailslotHandle, const mensagem& Mensagem) {
+bool enviarMensagem(HANDLE mailslotHandle, const mensagemPCP& Mensagem) {
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
 		std::cout << "Handle do mailslot inválido." << std::endl;
@@ -76,12 +121,12 @@ bool enviarMensagem(HANDLE mailslotHandle, const mensagem& Mensagem) {
 	bool escritaBemSucedida = WriteFile(
 		mailslotHandle,
 		&Mensagem,
-		sizeof(mensagem),
+		sizeof(mensagemPCP),
 		&bytesEscritos,
 		nullptr
 	);
 
-	if (!escritaBemSucedida || bytesEscritos != sizeof(mensagem)) {
+	if (!escritaBemSucedida || bytesEscritos != sizeof(mensagemPCP)) {
 		std::cout << "Erro ao enviar mensagem para o mailslot. Código de saída: " << GetLastError() << std::endl;
 		return false;
 	}
@@ -95,14 +140,26 @@ unsigned __stdcall tarefa1(void* param) {
 
     DadosCompartilhados* dados = (DadosCompartilhados*)param;
 
-    int contador = 1;
+    unsigned int contador = 0;
 
     while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
 
-        std::string mensagem =
-            "Supervisório: mensagem " + std::to_string(contador++);
+        mensagemSupervisorio mensagem{};
 
-        if (!dados->buffer->Insert(mensagem, "Supervisório")) {
+        mensagem.NSEQ = contador++;
+        mensagem.VOL = 250.5f;
+        mensagem.PRES = 3.2f;
+        mensagem.TZ1 = 120.5f;
+        mensagem.TZ2 = 121.0f;
+        mensagem.TZ3 = 119.8f;
+        mensagem.TIMESTAMP = time(nullptr);
+
+        std::string mensagemormatada = formatarMensagem(mensagem);
+
+        /*std::string mensagem =
+            "Supervisório: mensagem " + std::to_string(contador++);*/
+
+        if (!dados->buffer->Insert(mensagemormatada, "Supervisório")) {
             break;
         }
 
@@ -121,14 +178,28 @@ unsigned __stdcall tarefa2(void* param) {
 
     DadosCompartilhados* dados = (DadosCompartilhados*)param;
 
-    int contador = 1;
+    unsigned int contador = 0;
+
+    mensagemPCP mensagem{};
+
+    mensagem.NSEQ = contador++;
+    mensagem.HORA = time(nullptr);
+    mensagem.DURACAO = 120;
+
+    std::string op = "QPA" +
+        std::string(4 - std::to_string(contador).length(), '0') +
+        std::to_string(contador);
+
+    strcpy_s(mensagem.OP, op.c_str());
+
+    std::string mensagemormatada = formatarMensagem(mensagem);
 
     while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
 
-        std::string mensagem =
-            "PCP: mensagem " + std::to_string(contador++);
+        /*std::string mensagem =
+            "PCP: mensagem " + std::to_string(contador++);*/
 
-        if (!dados->buffer->Insert(mensagem, "PCP")) {
+        if (!dados->buffer->Insert(mensagemormatada, "PCP")) {
             break;
         }
 
@@ -199,17 +270,26 @@ int main() {
     HANDLE CloseEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
     if (CloseEvent == nullptr) {
-        std::cout << "Erro ao criar evento de encerramento. Código: " << GetLastError() << std::endl;
+        std::cout << "Erro ao criar evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+        return 1;
+    }
+
+    // Abre a conexão com o processo de gestão de produção via mailslot
+    HANDLE mailslotHandle = abrirMailslot();
+
+    if (mailslotHandle == INVALID_HANDLE_VALUE) {
+        std::cout << "Erro ao criar mailslot. Código de saída: " << GetLastError() << std::endl;
         return 1;
     }
 
     //inicilaiza o buffer
-
     Buffer1 buffer(CloseEvent);
 
+    // Inicialização de uma instância da estrutura "DadosCompartilhados"
     DadosCompartilhados dados;
     dados.buffer = &buffer;
     dados.CloseEvent = CloseEvent;
+    dados.mailslotHandle = mailslotHandle;
 
     //threads
 
@@ -236,20 +316,6 @@ int main() {
             SetEvent(CloseEvent);
         }
     }
-
-    // Abre a conexão com o processo de gestão de produção via mailslot
-
-    HANDLE mailslotHandle = abrirMailslot();
-
-    if (mailslotHandle == INVALID_HANDLE_VALUE) {
-        return 1;
-    }
-
-    mensagem Mensagem{};
-
-    // ...
-
-	enviarMensagem(mailslotHandle, Mensagem);
 
    //encerra threads
    if (threadsCriadas == NTHREADS) {
