@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <process.h>
 #include <conio.h>
+#include <ctime>
 
 #include "Buffer1.h"
 
@@ -22,6 +23,24 @@ struct mensagem {
     char conteudo[256];
 };
 
+struct mensagemSupervisorio {
+    unsigned int TIPO = 1;         // Sempre "1"
+    unsigned int NSEQ;             // Número sequencial da mensagem
+    float VOL;                     // Volume de clínquer (?) do forno
+    float PRES;                    // Pressão interna no forno rotativo
+    float TZ1;                     // Temperatura da zona 1 do forno rotativo
+    float TZ2;                     // Temperatura da zona 2 do forno rotativo
+    float TZ3;                     // Temperatura da zona  do forno rotativo
+    time_t HORA = time(nullptr);   // Hora, minuto, segundo e milissegundo
+};
+
+struct mensagemPCP {
+    unsigned int TIPO = 2;         // Sempre "2"
+    unsigned int NSEQ;             // Número sequencial da mensagem
+    time_t HORA = time(nullptr);   // Hora prevista para início da OP
+    unsigned int DURACAO;          // Tempo previsto para execução da OP (minutos)
+    char OP[8];                    // Número da Ordem de Produção (OP) em execução
+};
 
 HANDLE abrirMailslot() {
     HANDLE mailslot = CreateFileW(
