@@ -59,7 +59,7 @@ std::string formatarMensagem(const mensagemSupervisorio& mensagem) {
     std::string mensagemFormatada = stream.str();
 
     if (mensagemFormatada.size() != 50) {
-        std::cout << "Ocorreu um erro na formatação." << std::endl;
+        std::cout << "[Processo Produtor] Ocorreu um erro na formatação." << std::endl;
         return "";
     }
 
@@ -79,7 +79,7 @@ std::string formatarMensagem(const mensagemPCP& mensagem) {
     std::string mensagemFormatada = stream.str();
 
     if (mensagemFormatada.size() != 31) {
-        std::cout << "Ocorreu um erro na formatação." << std::endl;
+        std::cout << "[Processo Produtor] Ocorreu um erro na formatação." << std::endl;
         return "";
     }
 
@@ -89,7 +89,7 @@ std::string formatarMensagem(const mensagemPCP& mensagem) {
 
 HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter criado o mailslot antes do produtor tentar abri-lo
 
-    std::cout << "[Produtor] Tentando estabelecer comunicação via mailslot..." << std::endl;
+    std::cout << "[Processo Produtor] Tentando estabelecer comunicação via mailslot..." << std::endl;
 
     HANDLE mailslot = CreateFileW(
         NOME_MAISLOT,
@@ -102,10 +102,10 @@ HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter cria
     );
 
 	if (mailslot == INVALID_HANDLE_VALUE) {
-		std::cout << "Erro ao tentar estabelecer a comunicação via mailslot no processo produtor. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Processo Produtor] Erro ao tentar estabelecer a comunicação via mailslot no processo produtor. Código de saída: " << GetLastError() << std::endl;
 		return INVALID_HANDLE_VALUE;
 	} else {
-		std::cout << "Comunicação entre processos via mailslot estabelecida com sucesso." << std::endl;
+		std::cout << "[Processo Produtor] Comunicação entre processos via mailslot estabelecida com sucesso." << std::endl;
 		return mailslot;
 	}
 
@@ -114,7 +114,7 @@ HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter cria
 bool enviarMensagem(HANDLE mailslotHandle, const std::string& mensagem) {
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
-		std::cout << "Handle do mailslot inválido." << std::endl;
+		std::cout << "[Processo Produtor] Handle do mailslot inválido." << std::endl;
 		return false;
 	}
 
@@ -129,7 +129,7 @@ bool enviarMensagem(HANDLE mailslotHandle, const std::string& mensagem) {
 	);
 
 	if (!escritaBemSucedida || bytesEscritos != mensagem.size()) {
-		std::cout << "[Tarefa 3] Erro ao enviar mensagem para o mailslot. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Processo Produtor] [Tarefa 3] Erro ao enviar mensagem para o mailslot. Código de saída: " << GetLastError() << std::endl;
 		return false;
 	}
 
@@ -168,7 +168,7 @@ unsigned __stdcall tarefa1(void* param) {
         Sleep(1000);
     }
 
-    std::cout << "Tarefa 1 encerrada." << std::endl;
+    std::cout << "[Processo Produtor] Tarefa 1 encerrada." << std::endl;
 
     return 0;
 }
@@ -208,7 +208,7 @@ unsigned __stdcall tarefa2(void* param) {
         Sleep(1000);
     }
 
-    std::cout << "Tarefa 2 encerrada." << std::endl;
+    std::cout << "[Processo Produtor] Tarefa 2 encerrada." << std::endl;
 
     return 0;
 }
@@ -226,7 +226,7 @@ unsigned __stdcall tarefa3(void* param) {
         size_t separador = mensagem.find('/');
 
         if (separador == std::string::npos) {
-            std::cout << "[Tarefa1 3] Mensagem inválida: " << mensagem << std::endl;
+            std::cout << "[Processo Produtor] [Tarefa1 3] Mensagem inválida: " << mensagem << std::endl;
             continue;
         }
 
@@ -238,17 +238,17 @@ unsigned __stdcall tarefa3(void* param) {
             // Encaminhar a mensagem para o processo de gestão de produção, por meio do mailslot
 
             if (enviarMensagem((*dados).mailslotHandle, mensagem)) {
-                std::cout << "[Tarefa 3] Mensagem PCP encaminhada ao processo de gestão de produção: " << mensagem << std::endl;
+                std::cout << "[Processo Produtor] [Tarefa 3] Mensagem PCP encaminhada ao processo de gestão de produção: " << mensagem << std::endl;
             } else {
-                std::cout << "[Tarefa 3] Erro ao encaminhar a mensagem ao processo de gestão de produção." << std::endl;
+                std::cout << "[Processo Produtor] [Tarefa 3] Erro ao encaminhar a mensagem ao processo de gestão de produção." << std::endl;
             }
 
         } else {
-            std::cout << "[Tarefa1 3] Tipo da mensagem desconhecido: " << mensagem << std::endl;
+            std::cout << "[Processo Produtor] [Tarefa1 3] Tipo da mensagem desconhecido: " << mensagem << std::endl;
         }
     }
 
-    std::cout << "Tarefa 3 encerrada." << std::endl;
+    std::cout << "[Processo Produtor] Tarefa 3 encerrada." << std::endl;
 
     return 0;
 }
@@ -258,7 +258,7 @@ unsigned __stdcall monitorarEncerramento(void* param) {
     HANDLE eventoDeEncerramento = static_cast<HANDLE>(param);
 
     if (eventoDeEncerramento == nullptr) {
-        std::cout << "Handle do evento inválido. Código de saída: " << GetLastError() << std::endl;
+        std::cout << "[Processo Produtor] Handle do evento inválido. Código de saída: " << GetLastError() << std::endl;
         return 1;
 
     } else {
@@ -266,11 +266,11 @@ unsigned __stdcall monitorarEncerramento(void* param) {
         DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
         if (result == WAIT_OBJECT_0) {
-            std::cout << "Evento de encerramento sinalizado. Encerrando o processo produtor." << std::endl;
+            std::cout << "[Processo Produtor] Evento de encerramento sinalizado. Encerrando o processo produtor." << std::endl;
             return 0;
 
         } else if (result == WAIT_FAILED) {
-            std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
+            std::cout << "[Processo Produtor] Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
             return 1;
         }
     }
@@ -283,7 +283,7 @@ int main() {
     HANDLE CloseEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
     if (CloseEvent == nullptr) {
-        std::cout << "Erro ao criar evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+        std::cout << "[Processo Produtor] Erro ao criar evento de encerramento. Código de saída: " << GetLastError() << std::endl;
         return 1;
     }
 
@@ -293,25 +293,25 @@ int main() {
                                              L"eventoDeEncerramentoDosProcessosFilhos");
 
     if (eventoDeEncerramento == nullptr) {
-        std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+        std::cout << "[Processo Produtor] Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
         return 1;
     }
 
-    /*HANDLE eventoCriacaoMailSlot = OpenEventW(SYNCHRONIZE,
+    Sleep(10000); // processo produtor espera pela criação do evento de criação do mailslot antes de tentar abri-lo
+    HANDLE eventoCriacaoMailSlot = OpenEventW(SYNCHRONIZE,
                                              FALSE,
                                              L"eventoCriacaoMailSlot");
 
     if (eventoCriacaoMailSlot == nullptr) {
-        std::cout << "Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
+        std::cout << "[Processo Produtor] Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
         return 1;
-    }*/
+    }
 
-    // Abre a conexão com o processo de gestão de produção via mailslot
-	WaitForSingleObject(eventoDeEncerramento, 10000); // Aguarda o sinal do evento de criação do mailslot antes de tentar abrir o mailslot
-    HANDLE mailslotHandle = abrirMailslot();
+	WaitForSingleObject(eventoCriacaoMailSlot, 10000); // Aguarda o sinal do evento de criação do mailslot antes de tentar abrir o mailslot
+    HANDLE mailslotHandle = abrirMailslot(); // Abre a conexão com o processo de gestão de produção via mailslot
 
     if (mailslotHandle == INVALID_HANDLE_VALUE) {
-        std::cout << "Erro ao abrir mailslot. Código de saída: " << GetLastError() << std::endl;
+        std::cout << "[Processo Produtor] Erro ao abrir mailslot. Código de saída: " << GetLastError() << std::endl;
         return 1;
     }
 
@@ -342,18 +342,18 @@ int main() {
     for (int i = 0; i < NTHREADS; i++) {
         if (threads[i] != nullptr) {
             threadsCriadas++;
-            std::cout << "Thread da Tarefa " << i + 1 << " criada. ID: " << threadIds[i] << std::endl;
+            std::cout << "[Processo Produtor] Thread da Tarefa " << i + 1 << " criada. ID: " << threadIds[i] << std::endl;
         }
         else {
-            std::cout << "Erro ao criar a thread da Tarefa " << i + 1 << ". Código: " << GetLastError() << std::endl;
+            std::cout << "[Processo Produtor] [Processo Produtor] Erro ao criar a thread da Tarefa " << i + 1 << ". Código: " << GetLastError() << std::endl;
             SetEvent(CloseEvent);
         }
     }
 
    //encerra threads
    if (threadsCriadas == NTHREADS) {
-        std::cout << "\nProcesso Produtor em execução." << std::endl;
-        //std::cout << "Pressione qualquer tecla para encerrar o teste." << std::endl;
+        std::cout << "[Processo Produtor] \nProcesso Produtor em execução." << std::endl;
+        //std::cout << "[Processo Produtor] Pressione qualquer tecla para encerrar o teste." << std::endl;
         //_getch(); //tem que ver isso aqui
 
         DWORD waitThreadDeMonitoramento = WaitForSingleObject(threads[3], INFINITE); // Espera que a thread de monitoramento detecte a operação do programa principal
@@ -365,16 +365,16 @@ int main() {
             if (GetExitCodeThread(threads[3], &codigoDeSaidaDaThreadDeMonitoramento)) {
 
                 if (codigoDeSaidaDaThreadDeMonitoramento == 0) {
-                    std::cout << "O processo principal solicitou o encerramento dos processos-filhos." << std::endl;
+                    std::cout << "[Processo Produtor] O processo principal solicitou o encerramento dos processos-filhos." << std::endl;
                     // Sinaliza o encerramento das tarefas
                     SetEvent(CloseEvent);
                 }
             } else {
-                std::cout << "A thread de monitoramento terminou com erro." << std::endl;
+                std::cout << "[Processo Produtor] A thread de monitoramento terminou com erro." << std::endl;
             }
 
         } else {
-            std::cout << "Erro ao aguardar a sinalização da thread de monitoramento. Código de saída: " << GetLastError() << std::endl;
+            std::cout << "[Processo Produtor] Erro ao aguardar a sinalização da thread de monitoramento. Código de saída: " << GetLastError() << std::endl;
         }
 
         // Aguarda todas as threads que foram criadas
@@ -392,13 +392,13 @@ int main() {
             DWORD waitDemaisThreads = WaitForMultipleObjects(quantidade,threadsAtivas,TRUE,INFINITE);
 
             if (waitDemaisThreads == WAIT_OBJECT_0) {
-                std::cout << "Demais threads devidamente finalizadas." << std::endl;
+                std::cout << "[Processo Produtor] Demais threads devidamente finalizadas." << std::endl;
 
             } else if (waitDemaisThreads == WAIT_FAILED) {
-                std::cout << "Erro ao aguardar a finalização das demais threads. Código de saída: " << GetLastError() << std::endl;
+                std::cout << "[Processo Produtor] Erro ao aguardar a finalização das demais threads. Código de saída: " << GetLastError() << std::endl;
 
             } else {
-                std::cout << "Resultado inesperado ao aguardar o término das demais threads." << std::endl;
+                std::cout << "[Processo Produtor] Resultado inesperado ao aguardar o término das demais threads." << std::endl;
             }
         }
     }
@@ -416,7 +416,7 @@ int main() {
     CloseHandle(CloseEvent);
     CloseHandle(mailslotHandle);
 
-    std::cout << "\nProcesso Produtor encerrado." << std::endl;
+    std::cout << "[Processo Produtor] \nProcesso Produtor encerrado." << std::endl;
 
     return 0;
 }

@@ -36,17 +36,17 @@ HANDLE criarMailslot(HANDLE eventoCriacaoMailSlot) {
 	);
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
-		std::cout << "Erro ao criar o mailslot no processo de gestão de produção. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Erro ao criar o mailslot no processo de gestão de produção. Código de saída: " << GetLastError() << std::endl;
 		return INVALID_HANDLE_VALUE;
 	} else {
-		std::cout << "Mailslot criado com sucesso." << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Mailslot criado com sucesso." << std::endl;
 
 		if (!SetEvent(eventoCriacaoMailSlot)) {
-			std::cout << "Erro ao sinalizar o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
+			std::cout << "[Processo de Gestão de Produção] Erro ao sinalizar o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
 			return INVALID_HANDLE_VALUE;
 		}
 		else {
-			std::cout << "Evento de criação do mailslot sinalizado com sucesso." << std::endl;
+			std::cout << "[Processo de Gestão de Produção] Evento de criação do mailslot sinalizado com sucesso." << std::endl;
 		}
 
 		return mailslotHandle;
@@ -59,7 +59,7 @@ unsigned __stdcall receberMensagens(void* param) {
 	HANDLE mailslotHandle = static_cast<HANDLE>(param);
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
-		std::cout << "Handle do mailslot inválido. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Handle do mailslot inválido. Código de saída: " << GetLastError() << std::endl;
 		return 1;
 	}
 
@@ -79,7 +79,7 @@ unsigned __stdcall receberMensagens(void* param) {
 		);
 
 		if (!existemMensagens) {
-			std::cout << "Erro ao obter informações do mailslot. Código de saída: " << GetLastError() << std::endl;
+			std::cout << "[Processo de Gestão de Produção] Erro ao obter informações do mailslot. Código de saída: " << GetLastError() << std::endl;
 			break;
 		}
 
@@ -94,11 +94,11 @@ unsigned __stdcall receberMensagens(void* param) {
 			);
 
 			if (!leituraBemSucedida) {
-				std::cout << "Erro ao ler mensagem do mailslot. Código de saída: " << GetLastError() << std::endl;
+				std::cout << "[Processo de Gestão de Produção] Erro ao ler mensagem do mailslot. Código de saída: " << GetLastError() << std::endl;
 				return 1;
 
 			} else {
-				std::cout << "Mensagem recebida: " << "" << std::endl;
+				std::cout << "[Processo de Gestão de Produção] Mensagem recebida: " << "" << std::endl;
 			}
 		}
 
@@ -111,7 +111,7 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 	HANDLE eventoDeEncerramento = static_cast<HANDLE>(param);
 
 	if (eventoDeEncerramento == nullptr) {
-		std::cout << "Handle do evento inválido. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Handle do evento inválido. Código de saída: " << GetLastError() << std::endl;
 		return 1;
 
 	} else {
@@ -119,11 +119,11 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 		DWORD result = WaitForSingleObject(eventoDeEncerramento, INFINITE);
 
 		if (result == WAIT_OBJECT_0) {
-			std::cout << "Evento de encerramento sinalizado. Encerrando o processo de gestão de produção." << std::endl;
+			std::cout << "[Processo de Gestão de Produção] Evento de encerramento sinalizado. Encerrando o processo de gestão de produção." << std::endl;
 			return 0;
 
 		} else if (result == WAIT_FAILED) {
-			std::cout << "Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
+			std::cout << "[Processo de Gestão de Produção] Erro ao aguardar o evento de encerramento. Código: " << GetLastError() << std::endl;
 			return 1;
 		}
 	}
@@ -133,15 +133,15 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 int main() {
 
 	SetConsoleOutputCP(CP_UTF8); // Configura a saída do console para UTF-8
-	std::cout << "Este é o processo de gestão de produção.\n";
+	std::cout << "[Processo de Gestão de Produção] Este é o processo de gestão de produção.\n";
 
 	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
 											 FALSE, 
 											 L"eventoDeEncerramentoDosProcessosFilhos");
 
 	if (eventoDeEncerramento == nullptr) {
-		std::cout << "Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
-		return 1;
+		std::cout << "[Processo de Gestão de Produção] Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+		//return 1;
 	}
 
 	HANDLE eventoCriacaoMailSlot = CreateEventW(nullptr,
@@ -150,7 +150,7 @@ int main() {
 								   L"eventoCriacaoMailSlot");
 
 	if (eventoCriacaoMailSlot == nullptr) {
-		std::cout << "Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
 		return 1;
 	}
 
@@ -177,10 +177,10 @@ int main() {
 	);
 
 	if (threadDeMonitoramento) {
-		std::cout << "Thread de monitoramento criada com sucesso. ID da thread: " << threadDeMonitoramentoId << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Thread de monitoramento criada com sucesso. ID da thread: " << threadDeMonitoramentoId << std::endl;
 	}
 	else {
-		std::cout << "Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
 	}
 
 	// Criação de uma thread para receber mensagens do mailslot
@@ -196,10 +196,10 @@ int main() {
 	);
 
 	if (threadReceptora) {
-		std::cout << "Thread recptora criada com sucesso. ID da thread: " << threadReceptoraId << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Thread recptora criada com sucesso. ID da thread: " << threadReceptoraId << std::endl;
 	}
 	else {
-		std::cout << "Erro na criação da thread recptora. Código: " << GetLastError() << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Erro na criação da thread recptora. Código: " << GetLastError() << std::endl;
 	}
 
 	//--------------------------------------------------
@@ -216,9 +216,9 @@ int main() {
 	unsigned int resultadoDeMonitorarEncerramento = monitorarEncerramento(eventoDeEncerramento);
 
 	if (resultadoDeMonitorarEncerramento == 0) {
-		std::cout << "Processo de gestão de produção encerrado idealmente." << std::endl;
+		std::cout << "[Processo de Gestão de Produção] Processo de gestão de produção encerrado idealmente." << std::endl;
 	} else {
-		std::cout << "O processo de gestão de produção foi encerrado com erro." << std::endl;
+		std::cout << "[Processo de Gestão de Produção] O processo de gestão de produção foi encerrado com erro." << std::endl;
 	}
 
 	CloseHandle(eventoDeEncerramento);

@@ -43,9 +43,9 @@ processo GestaoDeProducao;
 
 // Estrutura de dados que reúne os processos-filhos e seus respectivos nomes
 std::vector<std::pair<processo*, std::string>> processos = {
+	{&GestaoDeProducao, "Processo de Gestão de Produção"},
 	{&Produtor, "Processo Produtor"},
-	{&Exibicao, "Processo de Exibição"},
-	{&GestaoDeProducao, "Processo de Gestão de Produção"}
+	{&Exibicao, "Processo de Exibição"}
 };
 
 // Estrutura de dados que reúne os handles dos processos-filhos
@@ -298,15 +298,6 @@ int main() {
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
-	for (HANDLE handleDeUmEvento : handlesDosEventos) {
-		if (handleDeUmEvento == nullptr) {
-			std::cout << "Erro na criação do evento de sincronização. Codigo: " << GetLastError() << std::endl;
-			return 1;
-		} else {
-			std::cout << "Evento de sincronização " << handleDeUmEvento << " criado com sucesso." << std::endl;
-		}
-	}
-
 	//--------------------------------------------------
 	//	  OBTENÇÃO DO DIRETÓRIO DOS EXECUTÁVEIS
 	//--------------------------------------------------
@@ -318,29 +309,29 @@ int main() {
 									   MAX_PATH);
 
 	if (dwResult == 0) {
-		std::cout << "Erro ao obter o caminho do executável atual. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Proceso Principal] Erro ao obter o caminho do executável atual. Código de saída: " << GetLastError() << std::endl;
 		return 1;
 	}
 	else if (dwResult > MAX_PATH) {
-		std::cout << "O caminho do executável atual pode ter sido truncado." << std::endl;
+		std::cout << "[Proceso Principal] O caminho do executável atual pode ter sido truncado." << std::endl;
 		return 1;
 	}
 
 	fs::path directory = fs::path(currentPath).parent_path(); // Obtém o diretório do executável atual
 
 	// Bloco de montagem dos caminhos dos executáveis dos processos filhos
+	GestaoDeProducao.processPath = directory / L"processoGestaoDeProducao.exe";
 	Produtor.processPath = directory / L"processoProdutor.exe";
 	Exibicao.processPath = directory / L"processoExibicao.exe";
-	GestaoDeProducao.processPath = directory / L"processoGestaoDeProducao.exe";
 
 	//--------------------------------------------------
 	//		    INICIALIZAÇÃO DOS EXECUTÁVEIS 
 	//			    DOS PROCESSOS FILHOS
 	//--------------------------------------------------
 
+	GestaoDeProducao.creationFlag = CREATE_NEW_CONSOLE;
 	Produtor.creationFlag = 0;
 	Exibicao.creationFlag = CREATE_NEW_CONSOLE;
-	GestaoDeProducao.creationFlag = CREATE_NEW_CONSOLE;
 
 	bool inicializacaoBemSucedida = true;
 
@@ -379,10 +370,10 @@ int main() {
 	);
 
 	if (threadSecundaria) {
-		std::cout << "Thread de monitoramento criada com sucesso. ID da thread: " << threadSecundariaId << std::endl;
+		std::cout << "[Proceso Principal] Thread de monitoramento criada com sucesso. ID da thread: " << threadSecundariaId << std::endl;
 	}
 	else {
-		std::cout << "Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
+		std::cout << "[Proceso Principal] Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
 	}
 
 	//--------------------------------------------------
@@ -400,14 +391,14 @@ int main() {
 
 	if (waitThreadSecundaria == WAIT_OBJECT_0) {
 
-		std::cout << "Thread secundária devidamente encerrada. Fechando seu handle." << std::endl;
+		std::cout << "[Proceso Principal] Thread secundária devidamente encerrada. Fechando seu handle." << std::endl;
 		CloseHandle(threadSecundaria);
 
 	} else if (waitThreadSecundaria == WAIT_FAILED){
-		std::cout << "Erro ao aguardar a sinalização da thread secundária. Código de saída: " << GetLastError() << std::endl;
+		std::cout << "[Proceso Principal] Erro ao aguardar a sinalização da thread secundária. Código de saída: " << GetLastError() << std::endl;
 
 	} else {
-		std::cout << "Resultado inesperado ao aguardar o término da thread secundária." << std::endl;
+		std::cout << "[Proceso Principal] Resultado inesperado ao aguardar o término da thread secundária." << std::endl;
 	}
 
 	return 0;
