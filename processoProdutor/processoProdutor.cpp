@@ -13,9 +13,12 @@
 
 
 #include "Buffer1.h"
+#include "Buffer2.h"
 
-#define NTHREADS 4
+#define NTHREADS 5 //Aumento em virtude do segundo buffer
 #define NOME_MAISLOT L"\\\\.\\mailslot\\comunicacaoPCP"
+#define NOME_MAILSLOT_EXIBICAO \
+    L"\\\\.\\mailslot\\comunicacaoSupervisorio"
 
 // "\\\\.\\" - Computador local
 // "mailslot\\" - mecaninismo de mailslot
@@ -24,8 +27,11 @@
 // Estrutura com os dados compartilhados entre as threads
 struct DadosCompartilhados {
     Buffer1* buffer;
+    Buffer2* buffer2;
     HANDLE CloseEvent;
     HANDLE mailslotHandle;
+    HANDLE mailslotExibicao;
+    HANDLE eventoAlternarRetirada;
 };
 
 struct mensagemSupervisorio {
@@ -119,6 +125,33 @@ HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter cria
 	}
 
 }
+HANDLE abrirMailslotExibicao() {
+
+    std::cout << "[Processo Produtor] Tentando estabelecer comunicacao com Exibicao..."
+              << std::endl;
+
+    HANDLE mailslot = CreateFileW(
+        NOME_MAILSLOT_EXIBICAO,
+        GENERIC_WRITE,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+    );
+
+    if (mailslot == INVALID_HANDLE_VALUE) {
+        std::cout << "[Processo Produtor] Erro ao abrir mailslot de Exibicao. Codigo: "
+                  << GetLastError() << std::endl;
+
+        return INVALID_HANDLE_VALUE;
+    }
+
+    std::cout << "[Processo Produtor] Comunicacao com Exibicao estabelecida."
+              << std::endl;
+
+    return mailslot;
+}
 
 bool enviarMensagem(HANDLE mailslotHandle, const std::string& mensagem) {
 
@@ -167,19 +200,22 @@ unsigned __stdcall tarefa1(void* param) {
         CloseHandle(temporiza);
         return 1;
     }
-
+    std::random_device rand;
+    std::mt19937 generator(rand());
+    std::uniform_int_distribution<int> faixa(0, 9999);
     while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
 
         mensagemSupervisorio mensagem{};
 
         mensagem.NSEQ = contador;
         contador = (contador + 1) % 100000;
-        mensagem.VOL = 250.5f;
-        mensagem.PRES = 3.2f;
-        mensagem.TZ1 = 120.5f;
-        mensagem.TZ2 = 121.0f;
-        mensagem.TZ3 = 119.8f;
-        
+
+        mensagem.VOL = faixa(generator) / 10.0f;
+        mensagem.PRES = faixa(generator) / 10.0f;
+        mensagem.TZ1 = faixa(generator) / 10.0f;
+        mensagem.TZ2 = faixa(generator) / 10.0f;
+        mensagem.TZ3 = faixa(generator) / 10.0f;
+                    
         SYSTEMTIME agroa;
         GetLocalTime(&agroa);
 
@@ -240,6 +276,13 @@ unsigned __stdcall tarefa2(void* param) {
     std::mt19937 generator(rand());
     std::uniform_int_distribution<int> intervlaRand(1000, 5000);
 
+    // Geração aleatória da hora de início da OP
+    std::uniform_int_distribution<int> horaRand(0, 23);
+    std::uniform_int_distribution<int> minutoRand(0, 59);
+    std::uniform_int_distribution<int> segundoRand(0, 59);
+    std::uniform_int_distribution<int> duracaoRand(0, 99999);
+    std::uniform_int_distribution<int> caractereRand(0, 35);
+
     /* TO COLOCANDO COMO COMENTARIO PQ N SEI SE A MSGM TEM QUE SER A MESMA
     mensagemPCP mensagem{};
     mensagem.NSEQ = contador++;
@@ -259,25 +302,28 @@ unsigned __stdcall tarefa2(void* param) {
         */
         mensagemPCP mensagem{};
 
-    mensagem.NSEQ = contador;
-    contador = (contador + 1) % 100000;
+        mensagem.NSEQ = contador;
+        contador = (contador + 1) % 100000;
 
-    time_t agora = time(nullptr);
-    tm hrLocal{};
+        
+        std::ostringstream hora;
 
-    localtime_s(&hrLocal, &agora);
+        hora << std::setfill('0')
+            << std::setw(2) << horaRand(generator) << ":"
+            << std::setw(2) << minutoRand(generator) << ":"
+            << std::setw(2) << segundoRand(generator);
 
-    std::ostringstream hora;
-    hora << std::put_time(&hrLocal, "%H:%M:%S");
+        mensagem.HORA = hora.str();
+    
+        mensagem.DURACAO = duracaoRand(generator);
 
-    mensagem.HORA = hora.str();
-    mensagem.DURACAO = 120;
+       const std::string caracteres =  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-    std::ostringstream op;
-
-    op << "QPA-" << std::setw(4) << std::setfill('0') << (contador % 10000);
-
-    strcpy_s(mensagem.OP, op.str().c_str());
+        for (int i = 0; i < 8; i++) {
+                mensagem.OP[i] =
+                caracteres[caractereRand(generator)];
+        }
+        mensagem.OP[8] = '\0';
 
     std::string mensagemormatada = formatarMensagem(mensagem);
 
@@ -317,8 +363,29 @@ unsigned __stdcall tarefa3(void* param) {
     DadosCompartilhados* dados = (DadosCompartilhados*)param;
 
     std::string mensagem;
+    bool retiradaBloqueada = false;
 
-    while (dados->buffer->Remove(mensagem)) {
+    while (true) {
+
+        HANDLE eventosEspera[2] = {dados->CloseEvent,dados->eventoAlternarRetirada};
+        DWORD resultado = WaitForMultipleObjects( 2, eventosEspera, FALSE, 50);            
+        if (resultado == WAIT_OBJECT_0) break;
+
+        if (resultado == WAIT_OBJECT_0 + 1) {
+            retiradaBloqueada = !retiradaBloqueada;
+            {
+                std::lock_guard<std::mutex> lock(mutexConsole);
+                std::cout << "[Processo Produtor] Retirada de mensagens " << (retiradaBloqueada ? "BLOQUEADA" : "LIBERADA") << std::endl;
+            }
+        }
+        else if (resultado == WAIT_FAILED) {
+            std::cout << "[Processo Produtor] Erro ao aguardar evento: " << GetLastError() << std::endl;
+            return 1;
+        }
+
+        if (retiradaBloqueada) continue;      
+
+        if (!dados->buffer->TryRemove(mensagem)) continue;
 
         size_t separador = mensagem.find('/');
 
@@ -330,7 +397,9 @@ unsigned __stdcall tarefa3(void* param) {
         std::string tipoDaMensagem = mensagem.substr(0, separador);
 
         if (tipoDaMensagem == "1") {
-            // Encaminhar mensagem para o 2º buffer
+            if (!dados->buffer2->Insert(mensagem)) {
+                break;
+            }
         } else if (tipoDaMensagem == "2") {
             // Encaminhar a mensagem para o processo de gestão de produção, por meio do mailslot
 
@@ -347,6 +416,63 @@ unsigned __stdcall tarefa3(void* param) {
     }
 
     std::cout << "[Processo Produtor] Tarefa 3 encerrada." << std::endl;
+
+    return 0;
+}
+unsigned __stdcall tarefaExibicao(void* param) {
+
+    DadosCompartilhados* dados =
+        static_cast<DadosCompartilhados*>(param);
+
+    std::string mensagem;
+
+    while (true) {
+
+        DWORD estado = WaitForSingleObject(
+            dados->CloseEvent, 0
+        );
+
+        if (estado == WAIT_OBJECT_0) {
+            break;
+        }
+
+        if (estado == WAIT_FAILED) {
+            std::cout << "[Processo Produtor] Erro ao verificar encerramento da tarefa de Exibicao: "
+                      << GetLastError() << std::endl;
+            return 1;
+        }
+
+        // Retira uma mensagem da segunda lista circular
+        if (!dados->buffer2->Remove(mensagem)) {
+            break;
+        }
+
+        // Envia a mensagem ao processo de Exibicao
+        DWORD bytesEscritos = 0;
+
+        BOOL envioBemSucedido = WriteFile(
+            dados->mailslotExibicao,
+            mensagem.data(),
+            static_cast<DWORD>(mensagem.size()),
+            &bytesEscritos,
+            nullptr
+        );
+
+        if (!envioBemSucedido) {
+            std::cout << "[Processo Produtor] Erro ao enviar mensagem para Exibicao. Codigo: "
+                      << GetLastError() << std::endl;
+            return 1;
+        }
+
+        if (bytesEscritos != mensagem.size()) {
+            std::cout << "[Processo Produtor] Envio incompleto para Exibicao."
+                      << std::endl;
+            return 1;
+        }
+    }
+
+    std::cout << "[Processo Produtor] Tarefa de Exibicao encerrada."
+              << std::endl;
 
     return 0;
 }
@@ -428,15 +554,87 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
         std::cout << "[Processo Produtor] Erro ao abrir mailslot. Código de saída: " << GetLastError() << std::endl;
         return 1;
     }
+        // Abre o evento de criacao do mailslot de Exibicao
+    HANDLE eventoCriacaoMailslotExibicao =
+    CreateEventW(
+        nullptr,
+        TRUE,
+        FALSE,
+        L"eventoCriacaoMailslotExibicao"
+    );
+      
+
+    if (eventoCriacaoMailslotExibicao == nullptr) {
+        std::cout << "[Produtor] Erro ao abrir evento de Exibicao: "
+                << GetLastError() << std::endl;
+
+        CloseHandle(mailslotHandle);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
+        return 1;
+    }
+
+    // Aguarda o mailslot de Exibicao ficar pronto
+    DWORD esperaExibicao = WaitForSingleObject(
+        eventoCriacaoMailslotExibicao,
+        10000
+    );
+
+    CloseHandle(eventoCriacaoMailslotExibicao);
+
+    if (esperaExibicao != WAIT_OBJECT_0) {
+        std::cout << "[Produtor] Erro ou timeout aguardando Exibicao."
+                << std::endl;
+
+        CloseHandle(mailslotHandle);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
+        return 1;
+    }
+
+    // Abre o mailslot de Exibicao
+    HANDLE mailslotExibicao = abrirMailslotExibicao();
+
+    if (mailslotExibicao == INVALID_HANDLE_VALUE) {
+        CloseHandle(mailslotHandle);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
+        return 1;
+    }
+    // Abre o evento de controle da tecla 'r'
+    HANDLE eventoAlternarRetirada = OpenEventW(
+        SYNCHRONIZE,
+        FALSE,
+        L"eventoDeAlternarEstadoDaRetiradaDeMensagens"
+    );
+
+    if (eventoAlternarRetirada == nullptr) {
+        std::cout
+            << "[Processo Produtor] Erro ao abrir evento da tecla r. Codigo: "
+            << GetLastError()
+            << std::endl;
+
+        CloseHandle(mailslotExibicao);
+        CloseHandle(mailslotHandle);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
+
+        return 1;
+    }
 
     //inicilaiza o buffer
     Buffer1 buffer(CloseEvent);
+    Buffer2 buffer2(CloseEvent);
+    
 
     // Inicialização de uma instância da estrutura "DadosCompartilhados"
     DadosCompartilhados dados;
     dados.buffer = &buffer;
+    dados.buffer2 = &buffer2;
     dados.CloseEvent = CloseEvent;
     dados.mailslotHandle = mailslotHandle;
+    dados.mailslotExibicao = mailslotExibicao;
+    dados.eventoAlternarRetirada = eventoAlternarRetirada;
 
     //threads
 
@@ -450,6 +648,8 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
     threads[2] = (HANDLE)_beginthreadex(nullptr, 0, tarefa3, &dados, 0, &threadIds[2]);
 
     threads[3] = (HANDLE)_beginthreadex(nullptr, 0, monitorarEncerramento, eventoDeEncerramento, 0, &threadIds[3]);
+
+    threads[4] = (HANDLE)_beginthreadex(nullptr, 0, tarefaExibicao, &dados, 0, &threadIds[4]);
 
     int threadsCriadas = 0;
 
@@ -526,9 +726,11 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
     }
 
     //buffer.CloseHandles(); closehandles é privado
-
+    CloseHandle(eventoAlternarRetirada);
     CloseHandle(CloseEvent);
     CloseHandle(mailslotHandle);
+    CloseHandle(mailslotExibicao);
+    CloseHandle(eventoDeEncerramento);
 
     std::cout << "[Processo Produtor] \nProcesso Produtor encerrado." << std::endl;
 
