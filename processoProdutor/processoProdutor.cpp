@@ -8,6 +8,7 @@
 #include <process.h>
 #include <conio.h>
 #include <ctime>
+#include <random>
 
 #include "Buffer1.h"
 
@@ -66,15 +67,18 @@ std::string formatarMensagem(const mensagemSupervisorio& mensagem) {
     return mensagemFormatada;
 }
 
-std::string formatarMensagem(const mensagemPCP& mensagem) {
-    
+std::string formatarMensagem(const mensagemPCP& mensagem) {    
     std::ostringstream stream;
-
+    
     stream << mensagem.TIPO << "/"
-        << std::setw(5) << std::setfill('0') << mensagem.NSEQ << "/"
-        << mensagem.OP << "/"
+        << std::setw(5)
+        << std::setfill('0')
+        << mensagem.NSEQ << "/"
         << mensagem.HORA << "/"
-        << std::setw(5) << std::setfill('0') << mensagem.DURACAO;
+        << std::setw(5)
+        << std::setfill('0')
+        << mensagem.DURACAO << "/"
+        << mensagem.OP;      
 
     std::string mensagemFormatada = stream.str();
 
@@ -143,18 +147,46 @@ unsigned __stdcall tarefa1(void* param) {
     DadosCompartilhados* dados = (DadosCompartilhados*)param;
 
     unsigned int contador = 0;
+    LARGE_INTEGER tempoInit;
+
+    //Ipmlementação do temporizador definitivo
+    HANDLE temporiza = CreateWaitableTimerW(nullptr, FALSE, nullptr);
+    if (temporiza == nullptr) {
+        std::cout << "Erro na criacao temporizador: " << GetLastError() << std::endl;
+        return 1;
+    }
+
+    tempoInit.QuadPart = -5000000; // primeiro disparo
+    if (!SetWaitableTimer(temporiza, &tempoInit, 500, nullptr, nullptr, FALSE)) {
+        std::cout << "Erro na config do temporizador: " << GetLastError() << std::endl;
+        CloseHandle(temporiza);
+        return 1;
+    }
 
     while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
 
         mensagemSupervisorio mensagem{};
 
-        mensagem.NSEQ = contador++;
+        mensagem.NSEQ = contador;
+        contador = (contador + 1) % 100000;
         mensagem.VOL = 250.5f;
         mensagem.PRES = 3.2f;
         mensagem.TZ1 = 120.5f;
         mensagem.TZ2 = 121.0f;
         mensagem.TZ3 = 119.8f;
-        mensagem.TIMESTAMP = time(nullptr);
+        
+        SYSTEMTIME agroa;
+        GetLocalTime(&agroa);
+
+        std::ostringstream hora;
+
+        hora << std::setfill('0')
+                << std::setw(2) << agroa.wHour << ":"
+                << std::setw(2) << agroa.wMinute << ":"
+                << std::setw(2) << agroa.wSecond << "."
+                << std::setw(3) << agroa.wMilliseconds;
+
+        mensagem.TIMESTAMP = hora.str();
 
         std::string mensagemormatada = formatarMensagem(mensagem);
 
@@ -164,12 +196,20 @@ unsigned __stdcall tarefa1(void* param) {
         if (!dados->buffer->Insert(mensagemormatada, "Supervisório")) {
             break;
         }
+        std::cout << "[Supervisorio] Mensagem: " << mensagemormatada << std::endl;
 
-        Sleep(1000);
+        HANDLE objetos[2] = { dados->CloseEvent, temporiza};
+        DWORD aguardaTime = WaitForMultipleObjects(2, objetos, FALSE, INFINITE);
+
+        if(aguardaTime != WAIT_OBJECT_0 + 1)  break;
+        
+        
     }
 
     std::cout << "[Processo Produtor] Tarefa 1 encerrada." << std::endl;
 
+    CancelWaitableTimer(temporiza);
+    CloseHandle(temporiza); 
     return 0;
 }
 
@@ -182,34 +222,80 @@ unsigned __stdcall tarefa2(void* param) {
 
     unsigned int contador = 0;
 
-    mensagemPCP mensagem{};
+    // Cria temp.
+    HANDLE temporiza = CreateWaitableTimerW(nullptr, FALSE, nullptr);
 
+    if (temporiza == nullptr) {
+        std::cout << "Erro na criacao temporizador PCP: "<< GetLastError() << std::endl;
+        return 1;
+    }
+    std::random_device rand;
+    std::mt19937 generator(rand());
+    std::uniform_int_distribution<int> intervlaRand(1000, 5000);
+
+    /* TO COLOCANDO COMO COMENTARIO PQ N SEI SE A MSGM TEM QUE SER A MESMA
+    mensagemPCP mensagem{};
     mensagem.NSEQ = contador++;
     mensagem.HORA = time(nullptr);
     mensagem.DURACAO = 120;
-
     std::string op = "QPA" +
         std::string(4 - std::to_string(contador).length(), '0') +
         std::to_string(contador);
-
     strcpy_s(mensagem.OP, op.c_str());
-
     std::string mensagemormatada = formatarMensagem(mensagem);
+    */
 
     while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
 
         /*std::string mensagem =
-            "PCP: mensagem " + std::to_string(contador++);*/
+            "PCP: mensagem " + std::to_string(contador++);
+        */
+        mensagemPCP mensagem{};
+
+    mensagem.NSEQ = contador;
+    contador = (contador + 1) % 100000;
+
+    time_t agora = time(nullptr);
+    tm hrLocal{};
+
+    localtime_s(&hrLocal, &agora);
+
+    std::ostringstream hora;
+    hora << std::put_time(&hrLocal, "%H:%M:%S");
+
+    mensagem.HORA = hora.str();
+    mensagem.DURACAO = 120;
+
+    std::ostringstream op;
+
+    op << "QPA-" << std::setw(4) << std::setfill('0') << (contador % 10000);
+
+    strcpy_s(mensagem.OP, op.str().c_str());
+
+    std::string mensagemormatada = formatarMensagem(mensagem);
 
         if (!dados->buffer->Insert(mensagemormatada, "PCP")) {
             break;
         }
+        std::cout << "[PCP] Mensagem: " << mensagemormatada << std::endl;
 
-        Sleep(1000);
+        int intervalo = intervlaRand(generator);
+        LARGE_INTEGER tempoInit;
+        tempoInit.QuadPart = -static_cast<LONGLONG>(intervalo) * 10000; 
+        
+        if(!SetWaitableTimer(temporiza, &tempoInit, 0, nullptr, nullptr, FALSE)) {
+            std::cout << "Erro na config do temp PCP: " << GetLastError() << std::endl;
+            break;
+        }
+        HANDLE objetos[2] = { dados->CloseEvent, temporiza };
+        DWORD aguardaTime = WaitForMultipleObjects(2, objetos, FALSE, INFINITE);
+        if (aguardaTime != WAIT_OBJECT_0 + 1) break;
+
     }
 
     std::cout << "[Processo Produtor] Tarefa 2 encerrada." << std::endl;
-
+    CancelWaitableTimer(temporiza);
+    CloseHandle(temporiza);
     return 0;
 }
 
@@ -274,7 +360,7 @@ unsigned __stdcall monitorarEncerramento(void* param) {
             return 1;
         }
     }
-
+    return 1;
 }
 
 int main() {
@@ -297,17 +383,33 @@ int main() {
         return 1;
     }
 
-    Sleep(10000); // processo produtor espera pela criação do evento de criação do mailslot antes de tentar abri-lo
-    HANDLE eventoCriacaoMailSlot = OpenEventW(SYNCHRONIZE,
+   // Sleep(10000); // processo produtor espera pela criação do evento de criação do mailslot antes de tentar abri-lo
+   /* HANDLE eventoCriacaoMailSlot = OpenEventW(SYNCHRONIZE,
                                              FALSE,
                                              L"eventoCriacaoMailSlot");
+*/
 
+HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"eventoCriacaoMailSlot");
+      
     if (eventoCriacaoMailSlot == nullptr) {
         std::cout << "[Processo Produtor] Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
         return 1;
     }
 
-	WaitForSingleObject(eventoCriacaoMailSlot, 10000); // Aguarda o sinal do evento de criação do mailslot antes de tentar abrir o mailslot
+	//WaitForSingleObject(eventoCriacaoMailSlot, 10000); // Aguarda o sinal do evento de criação do mailslot antes de tentar abrir o mailslot
+    DWORD resultado = WaitForSingleObject(
+        eventoCriacaoMailSlot,
+        10000
+        );
+
+    if (resultado != WAIT_OBJECT_0) {
+        std::cout << "[Processo Produtor] Erro ou timeout aguardando o mailslot." << std::endl;
+        CloseHandle(eventoCriacaoMailSlot);
+        return 1;
+    }
+
+    CloseHandle(eventoCriacaoMailSlot);
+
     HANDLE mailslotHandle = abrirMailslot(); // Abre a conexão com o processo de gestão de produção via mailslot
 
     if (mailslotHandle == INVALID_HANDLE_VALUE) {
