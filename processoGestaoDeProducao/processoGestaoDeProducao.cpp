@@ -8,6 +8,7 @@
 #include <iostream>
 #include <filesystem>
 #include <conio.h>		// _getch
+#include <sstream>
 
 #define NOME_MAISLOT L"\\\\.\\mailslot\\comunicacaoPCP"
 
@@ -21,9 +22,13 @@ struct mensagem {
 struct mensagemPCP {
 	unsigned int TIPO = 2;         // Sempre "2"
 	unsigned int NSEQ;             // Número sequencial da mensagem
-	time_t HORA = time(nullptr);   // Hora prevista para início da OP
+	std::string HORA;              // Hora prevista para início da OP
 	unsigned int DURACAO;          // Tempo previsto para execução da OP (minutos)
-	char OP[8];                    // Número da Ordem de Produção (OP) em execução
+	char OP[9];                    // Número da Ordem de Produção (OP) em execução considera o '\0' no final
+};
+struct DadosRecepcao {
+    HANDLE mailslotHandle;
+    HANDLE eventoDeEncerramento;
 };
 
 HANDLE criarMailslot(HANDLE eventoCriacaoMailSlot) {
@@ -54,9 +59,37 @@ HANDLE criarMailslot(HANDLE eventoCriacaoMailSlot) {
 
 }
 
+bool IsAInterpretavelMessage(const std::string& texto, mensagemPCP& mensagem){
+	if (texto.size() != 31) return false;
+	
+	// Mensagens sao separadas por "/"
+	if (texto[1] != '/' || texto[7] != '/' || texto[16] != '/' || texto[22] != '/') return false;
+	 try {
+        if (texto[0] != '2') return false;
+
+        mensagem.TIPO = 2;
+        mensagem.NSEQ = std::stoul(texto.substr(2, 5));
+        mensagem.HORA = texto.substr(8, 8);
+        mensagem.DURACAO = std::stoul(texto.substr(17, 5));
+        std::string op = texto.substr(23, 8);
+        strcpy_s(mensagem.OP, op.c_str());
+
+ 	} catch (const std::exception&) {
+        return false;
+    }
+
+    return true;    
+}
+
 unsigned __stdcall receberMensagens(void* param) {
 
-	HANDLE mailslotHandle = static_cast<HANDLE>(param);
+	
+    DadosRecepcao* dados = static_cast<DadosRecepcao*>(param);
+
+    HANDLE mailslotHandle = dados->mailslotHandle;
+
+    HANDLE eventoDeEncerramento = dados->eventoDeEncerramento;
+      
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
 		std::cout << "[Processo de Gestão de Produção] Handle do mailslot inválido. Código de saída: " << GetLastError() << std::endl;
@@ -67,9 +100,24 @@ unsigned __stdcall receberMensagens(void* param) {
 	DWORD quantidadeDeMensagens;
 	DWORD bytesLidos;
 
-	mensagemPCP Mensagem{};
+	//mensagemPCP Mensagem{};
+	char mensagemRecebida[32] = {};
 
-	while(true) {
+	
+	while (true) {
+      
+		
+		DWORD estado = WaitForSingleObject(eventoDeEncerramento, 0);
+
+		if (estado == WAIT_OBJECT_0) {
+			break;
+		}
+
+		if (estado == WAIT_FAILED) {
+			std::cout << "Erro ao verificar encerramento: "
+					<< GetLastError() << std::endl;
+			return 1;
+		}
 		bool existemMensagens = GetMailslotInfo(
 			mailslotHandle,
 			NULL,
@@ -80,15 +128,18 @@ unsigned __stdcall receberMensagens(void* param) {
 
 		if (!existemMensagens) {
 			std::cout << "[Processo de Gestão de Produção] Erro ao obter informações do mailslot. Código de saída: " << GetLastError() << std::endl;
-			break;
+			return 1;
 		}
 
 		if (quantidadeDeMensagens > 0) {
-
+			if (tamanhoDaMensagem >= sizeof(mensagemRecebida)) {
+				std::cout << "Mensagem maior que o buffer de recepcao." << std::endl;
+				return 1;
+			}
 			bool leituraBemSucedida = ReadFile(
 				mailslotHandle,
-				&Mensagem,
-				sizeof(Mensagem),
+				mensagemRecebida,
+				sizeof(mensagemRecebida) - 1,
 				&bytesLidos,
 				NULL
 			);
@@ -98,12 +149,35 @@ unsigned __stdcall receberMensagens(void* param) {
 				return 1;
 
 			} else {
-				std::cout << "[Processo de Gestão de Produção] Mensagem recebida: " << "" << std::endl;
+				if (bytesLidos != 31) {
+					std::cout << "[Gestao] Tamanho de mensagem invalido: " << bytesLidos << std::endl;
+					continue;
+				}
+				mensagemRecebida[bytesLidos] = '\0';
+				std::cout << "[Processo de Gestão de Produção] Mensagem recebida: "<< mensagemRecebida << std::endl;
+				 mensagemPCP mensagem{};
+
+				if (!IsAInterpretavelMessage(mensagemRecebida, mensagem)) {
+					std::cout << "[Gestao] Mensagem PCP invalida."<< std::endl;
+					continue;
+				}
+				std::cout << "[Gestao] TIPO: " << mensagem.TIPO
+						<< " | NSEQ: " << mensagem.NSEQ
+						<< " | HORA: " << mensagem.HORA
+						<< " | DURACAO: " << mensagem.DURACAO
+						<< " | OP: " << mensagem.OP
+						<< std::endl;
 			}
 		}
+		DWORD espera = WaitForSingleObject( eventoDeEncerramento, 50);
 
-		return 0;
+		if (espera == WAIT_OBJECT_0) break;
+		if (espera == WAIT_FAILED) {
+			std::cout << "Erro ao aguardar evento de encerramento: "<< GetLastError() << std::endl;
+			return 1;
+		}
 	}
+	return 0;
 }
 
 unsigned __stdcall monitorarEncerramento(void* param) {
@@ -127,7 +201,7 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 			return 1;
 		}
 	}
-
+	return 1;
 }
 
 int main() {
@@ -141,7 +215,7 @@ int main() {
 
 	if (eventoDeEncerramento == nullptr) {
 		std::cout << "[Processo de Gestão de Produção] Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
-		//return 1;
+		return 1;
 	}
 
 	HANDLE eventoCriacaoMailSlot = CreateEventW(nullptr,
@@ -186,14 +260,22 @@ int main() {
 	// Criação de uma thread para receber mensagens do mailslot
 	HANDLE threadReceptora;
 	DWORD threadReceptoraId;
-
-	threadReceptora = (HANDLE)_beginthreadex(NULL,
-		0,
-		monitorarEncerramento,
-		eventoDeEncerramento,
-		0,
-		(CAST_LPDWORD)&threadReceptoraId
-	);
+	DadosRecepcao dadosRecepcao = {
+		mailslotHandle,
+		eventoDeEncerramento
+	};
+	
+	threadReceptora =
+    (HANDLE)_beginthreadex(
+        NULL,
+        0,
+        receberMensagens,
+        &dadosRecepcao,
+        0,
+        (CAST_LPDWORD)
+        &threadReceptoraId
+    );
+		
 
 	if (threadReceptora) {
 		std::cout << "[Processo de Gestão de Produção] Thread recptora criada com sucesso. ID da thread: " << threadReceptoraId << std::endl;
@@ -202,13 +284,7 @@ int main() {
 		std::cout << "[Processo de Gestão de Produção] Erro na criação da thread recptora. Código: " << GetLastError() << std::endl;
 	}
 
-	//--------------------------------------------------
-	//	     	 AGUARDA O TÉRMINO DAS THREADS
-	//			     E FECHA SEUS HANDLES
-	//--------------------------------------------------
-
-
-
+	
 	//--------------------------------------------------
 	//    FECHA OS HANDLES DOS EVENTOS E MAILSLOT
 	//--------------------------------------------------
@@ -221,8 +297,23 @@ int main() {
 		std::cout << "[Processo de Gestão de Produção] O processo de gestão de produção foi encerrado com erro." << std::endl;
 	}
 
+	//--------------------------------------------------
+	//	     	 AGUARDA O TÉRMINO DAS THREADS
+	//			     E FECHA SEUS HANDLES
+	//--------------------------------------------------
+	if (threadReceptora != nullptr) {
+    WaitForSingleObject(threadReceptora, INFINITE);
+    CloseHandle(threadReceptora);
+	}
+
+	if (threadDeMonitoramento != nullptr) {
+		WaitForSingleObject(threadDeMonitoramento, INFINITE);
+		CloseHandle(threadDeMonitoramento);
+	}
+
 	CloseHandle(eventoDeEncerramento);
 	CloseHandle(mailslotHandle);
+	CloseHandle(eventoCriacaoMailSlot);
 
 	return 0;
 }

@@ -30,7 +30,8 @@ int tecla = 0;
 
 struct processo {
 	bool processStatus = false;
-	STARTUPINFO si{};
+	//STARTUPINFO si{};
+	STARTUPINFOW si{};
 	PROCESS_INFORMATION newProcessInfo{};
 	DWORD creationFlag = 0;
 	std::string processName = "";
@@ -77,7 +78,9 @@ bool inicializarProcesso(processo &processo) {
 	processo.si.cb = sizeof(processo.si);
 
 	// Criação dos processos-filhos
-	processo.processStatus = CreateProcess(
+	//Ficou incompativel com o meu
+	//processo.processStatus = CreateProcess(
+	processo.processStatus = CreateProcessW(
 		processo.processPath.c_str(), // Caminho do executável, criado durante a compilação
 		NULL,                         // Argumentos da linha de comando
 		NULL,                         // Atributos de segurança do processo
@@ -197,8 +200,8 @@ unsigned __stdcall monitorarProcessosFilhos(void* param) {
 //  FUNÇÃO DE EXIBIÇÃO DO MENU DE OPÇÕES DO SISTEMA
 //--------------------------------------------------
 
-void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& processos) {
-
+//void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& processos) {
+void menu(evento& eventos) {
 	do {
 		std::cout << "----------------------------------------" << std::endl;
 		std::cout << "         MENU DE OPÇÕES DO SISTEMA      " << std::endl;
@@ -221,7 +224,7 @@ void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& proce
 			if (falhaPrematuraDeUmProcessoFilho == WAIT_OBJECT_0) {
 
 				std::cout << "Um dos processos-filhos falhou prematuramente. O sistema será encerrado." << std::endl;
-				encerrarProcessosFilhos(processos);
+				SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
 				return;
 
 			} else if (falhaPrematuraDeUmProcessoFilho == WAIT_FAILED) {
@@ -229,14 +232,20 @@ void menu(evento& eventos, std::vector<std::pair<processo*, std::string>>& proce
 				std::cout << "Erro ao aguardar o evento de falha prematura de um processo-filho. Código de saída: " << GetLastError() << std::endl;
 			}
 
-			Sleep(100); // Aguarda 100ms antes de verificar novamente
+			
+			WaitForSingleObject(
+				eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho,
+				100
+			);
+      
 		}
 
 		tecla = _getch(); // Captura a entrada fornecida pelo usuário
 
 		if (tecla == ESC) {
 			std::cout << "O sistema está sendo encerrado." << std::endl;
-			encerrarProcessosFilhos(processos);
+
+			SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
 		}
 		else if (tecla == 's') {
 			SetEvent(eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio);
@@ -298,15 +307,36 @@ int main() {
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
+	// Evento de controle da tecla 'r'
+	eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens =
+		CreateEventW(
+			nullptr,
+			FALSE,
+			FALSE,
+			L"eventoDeAlternarEstadoDaRetiradaDeMensagens"
+		);
+
+	if (eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens == nullptr) {
+		std::cout
+			<< "[Processo Principal] Erro ao criar evento da tecla r. Codigo: "
+			<< GetLastError()
+			<< std::endl;
+
+		return 1;
+	}
+
+	handlesDosEventos.push_back(
+		eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens
+	);
+
 	//--------------------------------------------------
 	//	  OBTENÇÃO DO DIRETÓRIO DOS EXECUTÁVEIS
 	//--------------------------------------------------
 
 	wchar_t currentPath[MAX_PATH];
 
-	DWORD dwResult = GetModuleFileName(NULL, 
-									   currentPath, 
-									   MAX_PATH);
+	//DWORD dwResult = GetModuleFileName(NULL, currentPath, MAX_PATH);
+	DWORD dwResult = GetModuleFileNameW(NULL, currentPath, MAX_PATH);
 
 	if (dwResult == 0) {
 		std::cout << "[Proceso Principal] Erro ao obter o caminho do executável atual. Código de saída: " << GetLastError() << std::endl;
@@ -374,14 +404,16 @@ int main() {
 	}
 	else {
 		std::cout << "[Proceso Principal] Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
+		encerrarProcessosFilhos(processos);
+		return 1;
 	}
 
 	//--------------------------------------------------
 	//		INTERAÇÃO DO USUÁRIO COM O SISTEMA
 	//--------------------------------------------------
 
-	menu(eventos, processos); // Exibe o menu de opções do sistema e aguarda a entrada do usuário
-
+	//menu(eventos, processos); // Exibe o menu de opções do sistema e aguarda a entrada do usuário
+	menu(eventos);
 	//--------------------------------------------------
 	//	 AGUARDA O TÉRMINO DA THREAD DE MONITORAMENTO
 	//               E FECHA SEU HANDLE
@@ -400,6 +432,6 @@ int main() {
 	} else {
 		std::cout << "[Proceso Principal] Resultado inesperado ao aguardar o término da thread secundária." << std::endl;
 	}
-
+	encerrarProcessosFilhos(processos);
 	return 0;
 }
