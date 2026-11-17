@@ -9,6 +9,8 @@
 #include <conio.h>
 #include <ctime>
 #include <random>
+#include <mutex>
+
 
 #include "Buffer1.h"
 
@@ -89,6 +91,9 @@ std::string formatarMensagem(const mensagemPCP& mensagem) {
 
     return mensagemFormatada;
 }
+
+//Mutex para sincronizar o acesso ao console
+std::mutex mutexConsole;
 // 8 sobrecarga de funções: a partir do parâmetro, o compilador decide quem chamar
 
 HANDLE abrirMailslot() { // o processo de gestão de produção precisa ter criado o mailslot antes do produtor tentar abri-lo
@@ -196,8 +201,10 @@ unsigned __stdcall tarefa1(void* param) {
         if (!dados->buffer->Insert(mensagemormatada, "Supervisório")) {
             break;
         }
-        std::cout << "[Supervisorio] Mensagem: " << mensagemormatada << std::endl;
-
+        {
+            std::lock_guard<std::mutex> lock(mutexConsole);
+            std::cout << "[Supervisorio] Mensagem: " << mensagemormatada << std::endl;
+        }
         HANDLE objetos[2] = { dados->CloseEvent, temporiza};
         DWORD aguardaTime = WaitForMultipleObjects(2, objetos, FALSE, INFINITE);
 
@@ -277,7 +284,11 @@ unsigned __stdcall tarefa2(void* param) {
         if (!dados->buffer->Insert(mensagemormatada, "PCP")) {
             break;
         }
-        std::cout << "[PCP] Mensagem: " << mensagemormatada << std::endl;
+        {
+            std::lock_guard<std::mutex> lock(mutexConsole);
+
+            std::cout << "[PCP] Mensagem: " << mensagemormatada << std::endl;
+        }
 
         int intervalo = intervlaRand(generator);
         LARGE_INTEGER tempoInit;
@@ -324,6 +335,7 @@ unsigned __stdcall tarefa3(void* param) {
             // Encaminhar a mensagem para o processo de gestão de produção, por meio do mailslot
 
             if (enviarMensagem((*dados).mailslotHandle, mensagem)) {
+                std::lock_guard<std::mutex> lock(mutexConsole);
                 std::cout << "[Processo Produtor] [Tarefa 3] Mensagem PCP encaminhada ao processo de gestão de produção: " << mensagem << std::endl;
             } else {
                 std::cout << "[Processo Produtor] [Tarefa 3] Erro ao encaminhar a mensagem ao processo de gestão de produção." << std::endl;
