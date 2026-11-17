@@ -78,6 +78,41 @@ bool Buffer1::Remove(std::string& message) {
     return true;
 }
 
+bool Buffer1::TryRemove(std::string& message) {
+
+    if (CloseEvent_ != nullptr &&
+        WaitForSingleObject(CloseEvent_, 0) == WAIT_OBJECT_0) {
+        return false;
+    }
+
+    DWORD resultado = WaitForSingleObject(
+        message_semaph_, 0
+    );
+
+    if (resultado != WAIT_OBJECT_0) {
+        return false;
+    }
+
+    if (!WaitMutex()) {
+        ReleaseSemaphore(message_semaph_, 1, nullptr);
+        return false;
+    }
+
+    message = std::move(data_[begin_]);
+    data_[begin_].clear();
+    begin_ = (begin_ + 1) % capcity;
+
+    ReleaseMutex(mutex_);
+
+    if (!ReleaseSemaphore(vagas_semaph_, 1, nullptr)) {
+        std::cerr << "[Buffer 1] Erro ao liberar vaga: "
+                  << GetLastError() << '\n';
+        return false;
+    }
+
+    return true;
+}
+
 bool Buffer1::WaitObjct(HANDLE objeto) const {
     if (CloseEvent_ == nullptr) { return WaitForSingleObject(objeto, INFINITE) == WAIT_OBJECT_0;  }
 
