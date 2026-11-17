@@ -373,10 +373,8 @@ unsigned __stdcall tarefa3(void* param) {
 
         if (resultado == WAIT_OBJECT_0 + 1) {
             retiradaBloqueada = !retiradaBloqueada;
-            {
-                std::lock_guard<std::mutex> lock(mutexConsole);
                 std::cout << "[Processo Produtor] Retirada de mensagens " << (retiradaBloqueada ? "BLOQUEADA" : "LIBERADA") << std::endl;
-            }
+            
         }
         else if (resultado == WAIT_FAILED) {
             std::cout << "[Processo Produtor] Erro ao aguardar evento: " << GetLastError() << std::endl;
