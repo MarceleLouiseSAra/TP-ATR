@@ -22,6 +22,7 @@ public:
 
     //bloqueia se não tiver message  <->  retorna false se der erro ou no final
     bool Remove(std::string& message);
+    bool TryRemove(std::string& message);
 
 private:
     std::array<std::string, capcity> data_{};
