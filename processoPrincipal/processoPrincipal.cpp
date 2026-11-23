@@ -293,41 +293,60 @@ int main() {
 	//				DECLARAÇÃO DOS EVENTOS
 	//--------------------------------------------------
 
-	eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho = CreateEventW(nullptr,
-																		  true,
-																		  false,
-																		  L"eventoDeEncerramentoPrematuroDeUmProcessoFilho");
+	eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho = CreateEventW(nullptr, true, false,  L"eventoDeEncerramentoPrematuroDeUmProcessoFilho");
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
 
-	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr,
-																  true,
-																  false,
-																  L"eventoDeEncerramentoDosProcessosFilhos");
+	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr, true, false, L"eventoDeEncerramentoDosProcessosFilhos");
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
 	// Evento de controle da tecla 'r'
-	eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens =
-		CreateEventW(
-			nullptr,
-			FALSE,
-			FALSE,
-			L"eventoDeAlternarEstadoDaRetiradaDeMensagens"
-		);
+	eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens = CreateEventW(nullptr,FALSE,	FALSE,L"eventoDeAlternarEstadoDaRetiradaDeMensagens");
 
 	if (eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens == nullptr) {
-		std::cout
-			<< "[Processo Principal] Erro ao criar evento da tecla r. Codigo: "
-			<< GetLastError()
-			<< std::endl;
+		std::cout<< "[Processo Principal] Erro ao criar evento da tecla r. Codigo: "<< GetLastError()<< std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens);
 
+	// Evento de controle da tecla 's'
+	eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio = CreateEventW( nullptr,	FALSE,	FALSE,	L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
+
+	if (eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio == nullptr) {
+		std::cout<< "[Processo Principal] Erro ao criar evento da tecla s: "<< GetLastError() << std::endl;
 		return 1;
 	}
 
-	handlesDosEventos.push_back(
-		eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens
-	);
+
+	// Evento de controle da tecla 's'
+	eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio =	CreateEventW(nullptr, FALSE, FALSE, L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
+
+	if (eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla s: "<< GetLastError() << std::endl;
+		return 1;
+	}
+
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio);
+
+	// Evento de controle da tecla 'm'
+	eventos.eventoDeAlternarEstadoDaLeituraDoPCP =	CreateEventW(nullptr,FALSE,	FALSE,	L"eventoDeAlternarEstadoDaLeituraDoPCP");
+
+	if (eventos.eventoDeAlternarEstadoDaLeituraDoPCP == nullptr) {
+		std::cout<< "[Processo Principal] Erro ao criar evento da tecla m: "<< GetLastError() << std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaLeituraDoPCP);
+
+	// Evento de bloqueio/desbloqueio da exibição
+	eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso =CreateEventW(nullptr,FALSE,	FALSE,	L"eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso");
+
+	if (eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla p: "<< GetLastError() << std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso);
+
 
 	//--------------------------------------------------
 	//	  OBTENÇÃO DO DIRETÓRIO DOS EXECUTÁVEIS

@@ -32,6 +32,9 @@ struct DadosCompartilhados {
     HANDLE mailslotHandle;
     HANDLE mailslotExibicao;
     HANDLE eventoAlternarRetirada;
+    HANDLE eventoAlternarSupervisorio;
+    HANDLE eventoAlternarPCP;
+    HANDLE eventoAlternarExibicao;
 };
 
 struct mensagemSupervisorio {
@@ -185,6 +188,7 @@ unsigned __stdcall tarefa1(void* param) {
     DadosCompartilhados* dados = (DadosCompartilhados*)param;
 
     unsigned int contador = 0;
+    bool supervisorioBloqueado = false;
     LARGE_INTEGER tempoInit;
 
     //Ipmlementação do temporizador definitivo
@@ -203,8 +207,48 @@ unsigned __stdcall tarefa1(void* param) {
     std::random_device rand;
     std::mt19937 generator(rand());
     std::uniform_int_distribution<int> faixa(0, 9999);
-    while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
 
+    while (true) {
+
+        // Verifica encerramento e alternancia da tecla 's'
+        HANDLE eventosControle[2] = {
+            dados->CloseEvent,
+            dados->eventoAlternarSupervisorio
+        };
+
+        DWORD estado = WaitForMultipleObjects(2, eventosControle, FALSE, 0 );
+        if (estado == WAIT_OBJECT_0)  break;
+
+        if (estado == WAIT_OBJECT_0 + 1) {
+            supervisorioBloqueado = !supervisorioBloqueado;
+            std::cout << "[Processo Produtor] Leitura do Supervisorio " << (supervisorioBloqueado ? "BLOQUEADA" : "LIBERADA")  << std::endl;
+        }
+        else if (estado == WAIT_FAILED) {
+            std::cout << "[Processo Produtor] Erro ao verificar evento do Supervisorio: " << GetLastError() << std::endl;
+            break;
+        }
+        // Sse bloqueado, aguarda nova tecla s ou encerramento
+        if (supervisorioBloqueado) {
+
+            DWORD espera = WaitForMultipleObjects( 2, eventosControle, FALSE,  INFINITE);
+            if (espera == WAIT_OBJECT_0)  break;
+
+            if (espera == WAIT_OBJECT_0 + 1) {
+                supervisorioBloqueado = false;
+                LARGE_INTEGER reinicio;
+                reinicio.QuadPart = -5000000;
+
+                if (!SetWaitableTimer(temporiza,&reinicio, 500, nullptr, nullptr, FALSE)) {
+                    std::cout << "[Processo Produtor] Erro ao reiniciar temporizador: " << GetLastError() << std::endl;
+                    break;
+                }
+
+            std::cout << "[Processo Produtor] Leitura do Supervisorio LIBERADA" << std::endl;
+            continue;
+            }
+            std::cout  << "[Processo Produtor] Erro na espera do Supervisorio: "  << GetLastError() << std::endl;
+            break;
+        }
         mensagemSupervisorio mensagem{};
 
         mensagem.NSEQ = contador;
@@ -241,12 +285,21 @@ unsigned __stdcall tarefa1(void* param) {
             std::lock_guard<std::mutex> lock(mutexConsole);
             std::cout << "[Supervisorio] Mensagem: " << mensagemormatada << std::endl;
         }
-        HANDLE objetos[2] = { dados->CloseEvent, temporiza};
-        DWORD aguardaTime = WaitForMultipleObjects(2, objetos, FALSE, INFINITE);
 
-        if(aguardaTime != WAIT_OBJECT_0 + 1)  break;
-        
-        
+        HANDLE objetos[3] = { dados->CloseEvent, dados->eventoAlternarSupervisorio, temporiza};
+        DWORD aguardaTime = WaitForMultipleObjects(3, objetos, FALSE, INFINITE);
+        if (aguardaTime == WAIT_OBJECT_0) break;
+        if (aguardaTime == WAIT_OBJECT_0 + 1) {
+            supervisorioBloqueado = true;
+            std::cout  << "[Processo Produtor] Leitura do Supervisorio BLOQUEADA" << std::endl;
+            continue;
+        }
+
+        if (aguardaTime == WAIT_OBJECT_0 + 2) continue;
+
+        std::cout << "[Processo Produtor] Erro ao aguardar temporizador: " << GetLastError() << std::endl;
+        break;
+                    
     }
 
     std::cout << "[Processo Produtor] Tarefa 1 encerrada." << std::endl;
@@ -264,6 +317,8 @@ unsigned __stdcall tarefa2(void* param) {
     DadosCompartilhados* dados = (DadosCompartilhados*)param;
 
     unsigned int contador = 0;
+
+    bool pcpBloqueado = false;
 
     // Cria temp.
     HANDLE temporiza = CreateWaitableTimerW(nullptr, FALSE, nullptr);
@@ -283,23 +338,38 @@ unsigned __stdcall tarefa2(void* param) {
     std::uniform_int_distribution<int> duracaoRand(0, 99999);
     std::uniform_int_distribution<int> caractereRand(0, 35);
 
-    /* TO COLOCANDO COMO COMENTARIO PQ N SEI SE A MSGM TEM QUE SER A MESMA
-    mensagemPCP mensagem{};
-    mensagem.NSEQ = contador++;
-    mensagem.HORA = time(nullptr);
-    mensagem.DURACAO = 120;
-    std::string op = "QPA" +
-        std::string(4 - std::to_string(contador).length(), '0') +
-        std::to_string(contador);
-    strcpy_s(mensagem.OP, op.c_str());
-    std::string mensagemormatada = formatarMensagem(mensagem);
-    */
+    while (true) {
 
-    while (WaitForSingleObject(dados->CloseEvent, 0) != WAIT_OBJECT_0) {
+        HANDLE eventosControle[2] = {
+        dados->CloseEvent,
+        dados->eventoAlternarPCP
+        };
 
-        /*std::string mensagem =
-            "PCP: mensagem " + std::to_string(contador++);
-        */
+        DWORD estado = WaitForMultipleObjects(2, eventosControle, FALSE,  0 );
+        if (estado == WAIT_OBJECT_0) break;    
+
+        if (estado == WAIT_OBJECT_0 + 1) {
+            pcpBloqueado = !pcpBloqueado;
+            std::cout << "[Processo Produtor] Leitura do PCP " << (pcpBloqueado ? "BLOQUEADA" : "LIBERADA")  << std::endl;
+        }
+        else if (estado == WAIT_FAILED) {
+            std::cout << "[Processo Produtor] Erro ao verificar evento do PCP: " << GetLastError() << std::endl;
+            break;
+        }
+
+        if (pcpBloqueado) {
+            DWORD espera = WaitForMultipleObjects( 2, eventosControle, FALSE, INFINITE);
+            if (espera == WAIT_OBJECT_0)  break;            
+            if (espera == WAIT_OBJECT_0 + 1) {
+                pcpBloqueado = false;
+                std::cout  << "[Processo Produtor] Leitura do PCP LIBERADA"   << std::endl;
+                continue;
+            }
+
+            std::cout << "[Processo Produtor] Erro na espera do PCP: " << GetLastError() << std::endl;
+            break;
+        }
+
         mensagemPCP mensagem{};
 
         mensagem.NSEQ = contador;
@@ -325,14 +395,13 @@ unsigned __stdcall tarefa2(void* param) {
         }
         mensagem.OP[8] = '\0';
 
-    std::string mensagemormatada = formatarMensagem(mensagem);
+        std::string mensagemormatada = formatarMensagem(mensagem);
 
         if (!dados->buffer->Insert(mensagemormatada, "PCP")) {
             break;
         }
         {
             std::lock_guard<std::mutex> lock(mutexConsole);
-
             std::cout << "[PCP] Mensagem: " << mensagemormatada << std::endl;
         }
 
@@ -344,9 +413,34 @@ unsigned __stdcall tarefa2(void* param) {
             std::cout << "Erro na config do temp PCP: " << GetLastError() << std::endl;
             break;
         }
-        HANDLE objetos[2] = { dados->CloseEvent, temporiza };
-        DWORD aguardaTime = WaitForMultipleObjects(2, objetos, FALSE, INFINITE);
-        if (aguardaTime != WAIT_OBJECT_0 + 1) break;
+
+        HANDLE objetos[3] = {
+            dados->CloseEvent,
+            dados->eventoAlternarPCP,
+            temporiza
+        };
+
+        DWORD aguardaTime = WaitForMultipleObjects( 3,  objetos, FALSE, INFINITE);
+
+        if (aguardaTime == WAIT_OBJECT_0)  break;
+        
+
+        if (aguardaTime == WAIT_OBJECT_0 + 1) {
+            pcpBloqueado = true;
+            if (!CancelWaitableTimer(temporiza)) {
+                std::cout<< "[Processo Produtor] Erro ao cancelar temporizador PCP: " << GetLastError() << std::endl;
+                break;
+            }
+            std::cout << "[Processo Produtor] Leitura do PCP BLOQUEADA" << std::endl;
+            continue;
+        }
+
+        if (aguardaTime == WAIT_OBJECT_0 + 2) {
+            continue;
+        }
+
+        std::cout << "[Processo Produtor] Erro ao aguardar temporizador PCP: " << GetLastError() << std::endl;
+        break;
 
     }
 
@@ -419,32 +513,37 @@ unsigned __stdcall tarefa3(void* param) {
 }
 unsigned __stdcall tarefaExibicao(void* param) {
 
-    DadosCompartilhados* dados =
-        static_cast<DadosCompartilhados*>(param);
+    DadosCompartilhados* dados =  static_cast<DadosCompartilhados*>(param);
 
     std::string mensagem;
 
+    bool exibicaoBloqueada = false;
+
     while (true) {
 
-        DWORD estado = WaitForSingleObject(
-            dados->CloseEvent, 0
-        );
+        HANDLE eventosControle[2] = {
+            dados->CloseEvent,
+            dados->eventoAlternarExibicao
+        };
 
-        if (estado == WAIT_OBJECT_0) {
-            break;
+        DWORD estado = WaitForMultipleObjects(2, eventosControle, FALSE, 50);
+
+        if (estado == WAIT_OBJECT_0)  break;
+        
+
+        if (estado == WAIT_OBJECT_0 + 1) {
+            exibicaoBloqueada = !exibicaoBloqueada;
+            std::cout << "[Processo Produtor] Exibicao de dados de processo "  << (exibicaoBloqueada ? "BLOQUEADA" : "LIBERADA") << std::endl;
         }
-
-        if (estado == WAIT_FAILED) {
-            std::cout << "[Processo Produtor] Erro ao verificar encerramento da tarefa de Exibicao: "
-                      << GetLastError() << std::endl;
+        else if (estado == WAIT_FAILED) {
+            std::cout << "[Processo Produtor] Erro ao aguardar evento da Exibicao: "  << GetLastError()  << std::endl;
             return 1;
         }
 
-        // Retira uma mensagem da segunda lista circular
-        if (!dados->buffer2->Remove(mensagem)) {
-            break;
-        }
-
+        if (exibicaoBloqueada) continue;
+        
+        if (!dados->buffer2->TryRemove(mensagem)) continue;
+        
         // Envia a mensagem ao processo de Exibicao
         DWORD bytesEscritos = 0;
 
@@ -620,6 +719,37 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
         return 1;
     }
 
+    HANDLE eventoAlternarSupervisorio = OpenEventW( SYNCHRONIZE, FALSE, L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
+    if (eventoAlternarSupervisorio == nullptr) {
+        std::cout<< "[Processo Produtor] Erro ao abrir evento da tecla s: " << GetLastError() << std::endl;
+        CloseHandle(eventoAlternarRetirada);
+        CloseHandle(mailslotExibicao);
+        CloseHandle(mailslotHandle);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
+        return 1;
+    }
+    // Abre o evento de controle da tecla 'm'
+    HANDLE eventoAlternarPCP = OpenEventW( SYNCHRONIZE,  FALSE,  L"eventoDeAlternarEstadoDaLeituraDoPCP");
+
+    if (eventoAlternarPCP == nullptr) {
+        std::cout << "[Processo Produtor] Erro ao abrir evento da tecla m: " << GetLastError() << std::endl;
+        CloseHandle(eventoAlternarSupervisorio);
+        CloseHandle(eventoAlternarRetirada);
+        CloseHandle(mailslotExibicao);
+        CloseHandle(mailslotHandle);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
+        return 1;
+    }
+    
+    HANDLE eventoAlternarExibicao = OpenEventW( SYNCHRONIZE, FALSE, L"eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso");
+
+    if (eventoAlternarExibicao == nullptr) {
+        std::cout << "[Processo Produtor] Erro ao abrir evento da tecla p: " << GetLastError() << std::endl;
+        return 1;
+    }
+
     //inicilaiza o buffer
     Buffer1 buffer(CloseEvent);
     Buffer2 buffer2(CloseEvent);
@@ -633,6 +763,9 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
     dados.mailslotHandle = mailslotHandle;
     dados.mailslotExibicao = mailslotExibicao;
     dados.eventoAlternarRetirada = eventoAlternarRetirada;
+    dados.eventoAlternarSupervisorio = eventoAlternarSupervisorio;
+    dados.eventoAlternarPCP = eventoAlternarPCP;
+    dados.eventoAlternarExibicao = eventoAlternarExibicao;
 
     //threads
 
@@ -724,11 +857,13 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
     }
 
     //buffer.CloseHandles(); closehandles é privado
+    CloseHandle(eventoAlternarSupervisorio);
     CloseHandle(eventoAlternarRetirada);
     CloseHandle(CloseEvent);
     CloseHandle(mailslotHandle);
     CloseHandle(mailslotExibicao);
     CloseHandle(eventoDeEncerramento);
+    CloseHandle(eventoAlternarExibicao);
 
     std::cout << "[Processo Produtor] \nProcesso Produtor encerrado." << std::endl;
 
