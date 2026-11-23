@@ -747,7 +747,7 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
 
     if (eventoAlternarExibicao == nullptr) {
         std::cout << "[Processo Produtor] Erro ao abrir evento da tecla p: " << GetLastError() << std::endl;
-        return 1;
+        return 1;   
     }
 
     //inicilaiza o buffer
