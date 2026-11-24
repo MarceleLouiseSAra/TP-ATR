@@ -298,12 +298,30 @@ int main() {
 																		  false,
 																		  L"eventoDeEncerramentoPrematuroDeUmProcessoFilho");
 
+	if (eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho == nullptr) {
+		std::cout
+			<< "[Processo Principal] Erro ao criar evento de encerramento prematuro de processos-filhos. Codigo: "
+			<< GetLastError()
+			<< std::endl;
+
+		return 1;
+	}
+
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
 
 	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr,
 																  true,
 																  false,
 																  L"eventoDeEncerramentoDosProcessosFilhos");
+
+	if (eventos.eventoDeEncerramentoDosProcessosFilhos == nullptr) {
+		std::cout
+			<< "[Processo Principal] Erro ao criar evento de encerramento ideal de processos-filhos. Codigo: "
+			<< GetLastError()
+			<< std::endl;
+
+		return 1;
+	}
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
@@ -327,6 +345,50 @@ int main() {
 
 	handlesDosEventos.push_back(
 		eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens
+	);
+
+	// Evento de limpar o console do processo de Gestão de Produção
+	eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso =
+		CreateEventW(
+			nullptr,
+			FALSE,
+			FALSE,
+			L"eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso"
+		);
+
+	if (eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso == nullptr) {
+		std::cout
+			<< "[Processo Principal] Erro ao criar evento de limpeza do console de Exibição. Codigo: "
+			<< GetLastError()
+			<< std::endl;
+
+		return 1;
+	}
+
+	handlesDosEventos.push_back(
+		eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso
+	);
+
+	// Evento de limpar o console do processo Produtor
+	eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao =
+		CreateEventW(
+			nullptr,
+			FALSE,
+			FALSE,
+			L"eventoDeLimparJanelaDaTarefaDeGestaoDaProducao"
+		);
+
+	if (eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao == nullptr) {
+		std::cout
+			<< "[Processo Principal] Erro ao criar evento de limpeza do console de Gestão. Codigo: "
+			<< GetLastError()
+			<< std::endl;
+
+		return 1;
+	}
+
+	handlesDosEventos.push_back(
+		eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao
 	);
 
 	//--------------------------------------------------
