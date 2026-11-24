@@ -28,6 +28,9 @@ private:
     std::size_t begin_ = 0;
     std::size_t end_ = 0;
 
+    bool avisoVazio_ = false;
+    ULONGLONG inicioEspera_ = 0;
+
     HANDLE CloseEvent_ = nullptr;
     HANDLE mutex_ = nullptr;
     HANDLE vagas_semaph_ = nullptr;

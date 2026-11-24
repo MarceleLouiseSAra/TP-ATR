@@ -195,7 +195,31 @@ unsigned __stdcall monitorarProcessosFilhos(void* param) {
 
 	return 0;
 }
+bool enviarComandoLimpeza(const wchar_t* nomeMailslot) {
 
+    HANDLE mailslot = CreateFileW(nomeMailslot, GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL, nullptr );
+
+    if (mailslot == INVALID_HANDLE_VALUE) {
+        std::cout << "[Processo Principal] Erro ao abrir mailslot: " << GetLastError() << std::endl;
+        return false;
+    }
+
+    const char comando[] = "LIMPAR";
+    DWORD bytesEscritos = 0;
+
+    BOOL envio = WriteFile( mailslot, comando, sizeof(comando) - 1, &bytesEscritos, nullptr );
+
+    DWORD erro = envio ? ERROR_SUCCESS : GetLastError();
+
+    CloseHandle(mailslot);
+
+    if (!envio || bytesEscritos != sizeof(comando) - 1) {
+        std::cout << "[Processo Principal] Falha ao enviar comando de limpeza: " << erro << std::endl;
+        return false;
+    }
+
+    return true;
+}
 //--------------------------------------------------
 //  FUNÇÃO DE EXIBIÇÃO DO MENU DE OPÇÕES DO SISTEMA
 //--------------------------------------------------
@@ -244,7 +268,6 @@ void menu(evento& eventos) {
 
 		if (tecla == ESC) {
 			std::cout << "O sistema está sendo encerrado." << std::endl;
-
 			SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
 		}
 		else if (tecla == 's') {
@@ -263,10 +286,10 @@ void menu(evento& eventos) {
 			SetEvent(eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao);
 		}
 		else if (tecla == '1') {
-			SetEvent(eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso);
+			if (enviarComandoLimpeza( L"\\\\.\\mailslot\\comunicacaoSupervisorio" )) std::cout << "[Processo Principal] Comando de limpeza da Exibicao enviado." << std::endl;
 		}
 		else if (tecla == '2') {
-			SetEvent(eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao);
+			 if (enviarComandoLimpeza( L"\\\\.\\mailslot\\controleGestao")) std::cout << "[Processo Principal] Comando de limpeza da Gestao enviado." << std::endl;
 		}
 		else {
 			std::cout << "Opção de entrada inválida. Por favor, forneça uma entrada válida." << std::endl;
@@ -346,6 +369,18 @@ int main() {
 		return 1;
 	}
 	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso);
+
+	// Evento de bloqueio/desbloqueio da Gestão de Produção
+	eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao = CreateEventW(nullptr,FALSE,FALSE,L"eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao");
+
+	if (eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla g: "<< GetLastError() << std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao);
+
+
+
 
 
 	//--------------------------------------------------
