@@ -54,12 +54,12 @@ std::vector<HANDLE> handlesDosProcessos;
 
 struct evento { // não gostei muito disso daqui não
 	HANDLE eventoDeEncerramentoPrematuroDeUmProcessoFilho;
-	HANDLE eventoDeEncerramentoDosProcessosFilhos;
-	HANDLE eventoDeAlternarEstadoDaLeituraDoSupervisorio;
-	HANDLE eventoDeAlternarEstadoDaLeituraDoPCP;
-	HANDLE eventoDeAlternarEstadoDaRetiradaDeMensagens;
-	HANDLE eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso;
-	HANDLE eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao;
+	HANDLE eventoDeEncerramentoDosProcessosFilhos; // falta
+	HANDLE eventoDeAlternarEstadoDaLeituraDoSupervisorio; // falta
+	HANDLE eventoDeAlternarEstadoDaLeituraDoPCP; // falta
+	HANDLE eventoDeAlternarEstadoDaRetiradaDeMensagens; // falta
+	HANDLE eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso; // falta
+	HANDLE eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao; // falta
 	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso;
 	HANDLE eventoDeLimparJanelaDaTarefaDeGestaoDaProducao;
 };

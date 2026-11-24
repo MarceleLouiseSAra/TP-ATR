@@ -204,11 +204,36 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 	return 1;
 }
 
+void limparConsole() {
+	// Limpa a tela do console
+	system("cls");
+}
+
+unsigned __stdcall monitorarComandoDeLimpezaDoConsole(void* param) {
+	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso = static_cast<HANDLE>(param);
+
+	while (true) {
+		DWORD resultado = WaitForSingleObject(
+			eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso,
+			INFINITE);
+
+		if (resultado == WAIT_OBJECT_0) {
+			limparConsole();
+		}
+		else {
+			break;
+		}
+	}
+
+	return 0;
+}
+
 int main() {
 
 	SetConsoleOutputCP(CP_UTF8); // Configura a saída do console para UTF-8
 	std::cout << "[Processo de Gestão de Produção] Este é o processo de gestão de produção.\n";
 
+	// Seção de abertura de eventos
 	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
 											 FALSE, 
 											 L"eventoDeEncerramentoDosProcessosFilhos");
@@ -218,6 +243,16 @@ int main() {
 		return 1;
 	}
 
+	HANDLE eventoDeLimparJanelaDaTarefaDeGestaoDaProducao = OpenEventW(SYNCHRONIZE,
+		FALSE,
+		L"eventoDeLimparJanelaDaTarefaDeGestaoDaProducao");
+
+	if (eventoDeLimparJanelaDaTarefaDeGestaoDaProducao == nullptr) {
+		std::cout << "Erro ao abrir o evento de limpeza do console de Exibição. Código de saída: " << GetLastError() << std::endl;
+		return 1;
+	}
+
+	// Seção de criação de eventos
 	HANDLE eventoCriacaoMailSlot = CreateEventW(nullptr,
 								   true,
 								   false,
@@ -238,10 +273,10 @@ int main() {
 	//	        CRIAÇÃO DE THREADS SECUNDÁRIAS
 	//--------------------------------------------------
 	
-	// Criação de uma thread de monitoramento do evento de encerramento
-	HANDLE threadDeMonitoramento;
-	DWORD threadDeMonitoramentoId;
+	HANDLE threadDeMonitoramento, threadReceptora, threadDeLimpeza;
+	DWORD threadDeMonitoramentoId, threadReceptoraId, threadDeLimpezaId;
 
+	// Criação de uma thread de monitoramento do evento de encerramento
 	threadDeMonitoramento = (HANDLE)_beginthreadex(NULL,
 												   0,
 												   monitorarEncerramento,
@@ -258,8 +293,6 @@ int main() {
 	}
 
 	// Criação de uma thread para receber mensagens do mailslot
-	HANDLE threadReceptora;
-	DWORD threadReceptoraId;
 	DadosRecepcao dadosRecepcao = {
 		mailslotHandle,
 		eventoDeEncerramento
@@ -284,6 +317,20 @@ int main() {
 		std::cout << "[Processo de Gestão de Produção] Erro na criação da thread recptora. Código: " << GetLastError() << std::endl;
 	}
 
+	// Criação de uma thread dedicada ao monitoramento do comando de limpeza do console
+	threadDeLimpeza = (HANDLE)_beginthreadex(
+		nullptr,
+		0,
+		monitorarComandoDeLimpezaDoConsole,
+		eventoDeLimparJanelaDaTarefaDeGestaoDaProducao,
+		0,
+		(CAST_LPDWORD) &threadDeLimpezaId
+	);
+
+	if (threadDeLimpeza == nullptr) {
+		std::cout << "[Processo de Gestão de Produção] Erro ao criar thread de limpeza."
+			<< std::endl;
+	}
 	
 	//--------------------------------------------------
 	//    FECHA OS HANDLES DOS EVENTOS E MAILSLOT
