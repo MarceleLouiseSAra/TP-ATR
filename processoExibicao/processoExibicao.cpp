@@ -214,11 +214,35 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 	return 0;
 }
 
+void limparConsole() {
+	// Limpa a tela do console
+	system("cls");
+}
+
+unsigned __stdcall monitorarComandoDeLimpezaDoConsole(void* param) {
+	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso = static_cast<HANDLE>(param);
+
+	while (true) {
+		DWORD resultado = WaitForSingleObject(
+			eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso, 
+			INFINITE);
+
+		if (resultado == WAIT_OBJECT_0) {
+			limparConsole();
+		} else {
+			break;
+		}
+	}
+
+	return 0;
+}
+
 int main() {
 
 	SetConsoleOutputCP(CP_UTF8); // Configura a saída do console para UTF-8
     std::cout << "Este é o processo de exibição.\n";
 
+	// Seção de abertura de eventos
 	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
 											 FALSE,
 										 	 L"eventoDeEncerramentoDosProcessosFilhos");
@@ -228,6 +252,16 @@ int main() {
 		return 1;
 	}
 
+	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso = OpenEventW(SYNCHRONIZE,
+		FALSE,
+		L"eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso");
+
+	if (eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso == nullptr) {
+		std::cout << "Erro ao abrir o evento de limpeza do console de Exibição. Código de saída: " << GetLastError() << std::endl;
+		return 1;
+	}
+
+	// Seção de criação de eventos
 	HANDLE eventoCriacaoMailslotExibicao = CreateEventW(
 		nullptr,
 		TRUE,
@@ -236,7 +270,7 @@ int main() {
 	);
 
 	if (eventoCriacaoMailslotExibicao == nullptr) {
-		std::cout << "Erro ao criar evento: "<< GetLastError() << std::endl;
+		std::cout << "Erro ao criar evento: " << GetLastError() << std::endl;
 		CloseHandle(eventoDeEncerramento);
 		return 1;
 	}
@@ -258,12 +292,28 @@ int main() {
 		CloseHandle(eventoDeEncerramento);
 		return 1;
 	}
-
 	
 	DadosRecepcaoExibicao dadosRecepcao = {
 		mailslotHandle,
 		eventoDeEncerramento
 	};
+
+	unsigned int threadReceptoraId = 0, threadDeLimpezaId = 0;
+
+	// Criação de uma thread dedicada ao monitoramento do comando de limpeza do console 
+	HANDLE threadDeLimpeza = (HANDLE)_beginthreadex(
+		nullptr,
+		0,
+		monitorarComandoDeLimpezaDoConsole,
+		eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso,
+		0,
+		&threadDeLimpezaId
+	);
+
+	if (threadDeLimpeza == nullptr) {
+		std::cout << "[Exibicao] Erro ao criar thread de limpeza."
+			<< std::endl;
+	}
 
 	// Cria a thread receptora do Supervisorio
 	unsigned int threadReceptoraId = 0;
@@ -294,7 +344,6 @@ int main() {
 	} else {
 		std::cout << "O processo de exibição foi encerrado com erro." << std::endl;
 	}
-
 	
 	DWORD esperaThread =
 		WaitForSingleObject(

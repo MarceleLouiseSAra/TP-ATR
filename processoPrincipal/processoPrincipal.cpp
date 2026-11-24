@@ -337,6 +337,26 @@ int main() {
 		return 1;
 	}
 
+	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
+
+	// Evento de controle da tecla 'r'
+	eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens = CreateEventW(nullptr,FALSE,	FALSE,L"eventoDeAlternarEstadoDaRetiradaDeMensagens");
+
+	if (eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens == nullptr) {
+		std::cout<< "[Processo Principal] Erro ao criar evento da tecla r. Codigo: "<< GetLastError()<< std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens);
+
+
+	// Evento de controle da tecla 's'
+	eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio =	CreateEventW(nullptr, FALSE, FALSE, L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
+
+	if (eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla s: "<< GetLastError() << std::endl;
+		return 1;
+	}
+
 	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio);
 
 	// Evento de controle da tecla 'm'
