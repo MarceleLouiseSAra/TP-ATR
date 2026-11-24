@@ -60,8 +60,6 @@ struct evento { // não gostei muito disso daqui não
 	HANDLE eventoDeAlternarEstadoDaRetiradaDeMensagens;
 	HANDLE eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso;
 	HANDLE eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao;
-	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso;
-	HANDLE eventoDeLimparJanelaDaTarefaDeGestaoDaProducao;
 };
 
 evento eventos;
@@ -142,9 +140,6 @@ void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &pro
 			}
 			
 		}
-
-		CloseHandle(eventos.eventoDeEncerramentoDosProcessosFilhos);
-		eventos.eventoDeEncerramentoDosProcessosFilhos = nullptr;
 
 	} else {
 		std::cout << "Handle do evento de encerramento inválido." << std::endl;
@@ -333,14 +328,6 @@ int main() {
 	}
 	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens);
 
-	// Evento de controle da tecla 's'
-	eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio = CreateEventW( nullptr,	FALSE,	FALSE,	L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
-
-	if (eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio == nullptr) {
-		std::cout<< "[Processo Principal] Erro ao criar evento da tecla s: "<< GetLastError() << std::endl;
-		return 1;
-	}
-
 
 	// Evento de controle da tecla 's'
 	eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio =	CreateEventW(nullptr, FALSE, FALSE, L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
@@ -486,6 +473,13 @@ int main() {
 	} else {
 		std::cout << "[Proceso Principal] Resultado inesperado ao aguardar o término da thread secundária." << std::endl;
 	}
+
 	encerrarProcessosFilhos(processos);
+
+	for (HANDLE handle : handlesDosEventos) {
+		if (handle != nullptr) 	CloseHandle(handle);		
+	}
+	handlesDosEventos.clear();
+
 	return 0;
 }

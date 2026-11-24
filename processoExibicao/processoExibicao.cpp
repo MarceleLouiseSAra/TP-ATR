@@ -42,12 +42,12 @@ bool interpretarMensagemSupervisorio(const std::string& texto, mensagemSuperviso
         mensagem.TIPO = 1;
         mensagem.NSEQ = std::stoul(texto.substr(2, 5));
 
-        mensagem.TZ1 = std::stof(texto.substr(8, 5));
-        mensagem.TZ2 = std::stof(texto.substr(14, 5));
-        mensagem.TZ3 = std::stof(texto.substr(20, 5));
+        mensagem.VOL = std::stof(texto.substr(8, 5));
+		mensagem.PRES = std::stof(texto.substr(14, 5));
 
-        mensagem.VOL = std::stof(texto.substr(26, 5));
-        mensagem.PRES = std::stof(texto.substr(32, 5));
+		mensagem.TZ1 = std::stof(texto.substr(20, 5));
+		mensagem.TZ2 = std::stof(texto.substr(26, 5));
+		mensagem.TZ3 = std::stof(texto.substr(32, 5));
 
         mensagem.TIMESTAMP = texto.substr(38, 12);
 
@@ -122,8 +122,7 @@ unsigned __stdcall receberMensagensSupervisorio(void* param) {
         BOOL existemMensagens = GetMailslotInfo(mailslotHandle,nullptr,&tamanhoDaMensagem,&quantidadeDeMensagens,nullptr);
 
         if (!existemMensagens) {
-            std::cout << "[Exibicao] Erro ao consultar mailslot: "
-                      << GetLastError() << std::endl;
+            std::cout << "[Exibicao] Erro ao consultar mailslot: "<< GetLastError() << std::endl;
             return 1;
         }
 
@@ -170,7 +169,7 @@ unsigned __stdcall receberMensagensSupervisorio(void* param) {
 				<< " | TZ3: " << std::setw(5) << mensagem.TZ3
 				<< " | VOL: " << std::setw(5) << mensagem.VOL
 				<< " | PRES: " << std::setw(5) << mensagem.PRES
-				<< " | TIMESTAMP: " << mensagem.TIMESTAMP;
+				<< " | HORA: " << mensagem.TIMESTAMP;
 
 			std::cout << saida.str() << std::endl;
 		}
@@ -269,18 +268,10 @@ int main() {
 	// Cria a thread receptora do Supervisorio
 	unsigned int threadReceptoraId = 0;
 
-	HANDLE threadReceptora = (HANDLE)_beginthreadex(
-		nullptr,
-		0,
-		receberMensagensSupervisorio,
-		&dadosRecepcao,
-		0,
-		&threadReceptoraId
-	);
+	HANDLE threadReceptora = (HANDLE)_beginthreadex(nullptr,0,receberMensagensSupervisorio,	&dadosRecepcao,	0,&threadReceptoraId);
 
 	if (threadReceptora == nullptr) {
-		std::cout << "[Exibicao] Erro ao criar thread receptora."
-				<< std::endl;
+		std::cout << "[Exibicao] Erro ao criar thread receptora."<< std::endl;
 
 		// Aguarda o encerramento geral antes de liberar os recursos.
 		monitorarEncerramento(eventoDeEncerramento);

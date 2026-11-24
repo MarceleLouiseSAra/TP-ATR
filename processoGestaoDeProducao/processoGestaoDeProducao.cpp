@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <conio.h>		// _getch
 #include <sstream>
+#include <iomanip>
 
 #define NOME_MAISLOT L"\\\\.\\mailslot\\comunicacaoPCP"
 #define NOME_MAILSLOT_CONTROLE_GESTAO L"\\\\.\\mailslot\\controleGestao"
@@ -197,19 +198,20 @@ unsigned __stdcall receberMensagens(void* param) {
 					continue;
 				}
 				mensagemRecebida[bytesLidos] = '\0';
-				std::cout << "[Processo de Gestão de Produção] Mensagem recebida: "<< mensagemRecebida << std::endl;
+				//std::cout << "[Processo de Gestão de Produção] Mensagem recebida: "<< mensagemRecebida << std::endl;
 				 mensagemPCP mensagem{};
 
 				if (!IsAInterpretavelMessage(mensagemRecebida, mensagem)) {
 					std::cout << "[Gestao] Mensagem PCP invalida."<< std::endl;
 					continue;
 				}
-				std::cout << "[Gestao] TIPO: " << mensagem.TIPO
-						<< " | NSEQ: " << mensagem.NSEQ
-						<< " | HORA: " << mensagem.HORA
-						<< " | DURACAO: " << mensagem.DURACAO
-						<< " | OP: " << mensagem.OP
-						<< std::endl;
+				std::cout << "[Gestao] NSEQ: "
+					<< std::setfill('0') << std::setw(5) << mensagem.NSEQ
+					<< " | OP: " << mensagem.OP
+					<< " | HORA DE INICIO: " << mensagem.HORA
+					<< " | DURACAO: " << std::setw(5) << mensagem.DURACAO
+					<< std::setfill(' ')
+					<< std::endl;
 			}
 		}		
 	}

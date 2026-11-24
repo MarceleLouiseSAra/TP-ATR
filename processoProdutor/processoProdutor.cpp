@@ -61,11 +61,11 @@ std::string formatarMensagem(const mensagemSupervisorio& mensagem) {
 
     stream << mensagem.TIPO << "/"
         << std::setw(5) << std::setfill('0') << mensagem.NSEQ << "/"
-        << std::setw(5) << std::fixed << std::setprecision(1) << mensagem.TZ1 << "/"
+        << std::setw(5) << std::fixed << std::setprecision(1) << mensagem.VOL << "/"
+        << std::setw(5) << mensagem.PRES << "/"
+        << std::setw(5) << mensagem.TZ1 << "/"
         << std::setw(5) << mensagem.TZ2 << "/"
         << std::setw(5) << mensagem.TZ3 << "/"
-        << std::setw(5) << mensagem.VOL << "/"
-        << std::setw(5) << mensagem.PRES << "/"
         << mensagem.TIMESTAMP;
 
     std::string mensagemFormatada = stream.str();
@@ -615,6 +615,7 @@ int main() {
 
     if (eventoDeEncerramento == nullptr) {
         std::cout << "[Processo Produtor] Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
+        CloseHandle(CloseEvent);
         return 1;
     }
 
@@ -628,6 +629,8 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
       
     if (eventoCriacaoMailSlot == nullptr) {
         std::cout << "[Processo Produtor] Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
         return 1;
     }
 
@@ -640,6 +643,8 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
     if (resultado != WAIT_OBJECT_0) {
         std::cout << "[Processo Produtor] Erro ou timeout aguardando o mailslot." << std::endl;
         CloseHandle(eventoCriacaoMailSlot);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
         return 1;
     }
 
@@ -649,21 +654,16 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
 
     if (mailslotHandle == INVALID_HANDLE_VALUE) {
         std::cout << "[Processo Produtor] Erro ao abrir mailslot. Código de saída: " << GetLastError() << std::endl;
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
         return 1;
     }
         // Abre o evento de criacao do mailslot de Exibicao
     HANDLE eventoCriacaoMailslotExibicao =
-    CreateEventW(
-        nullptr,
-        TRUE,
-        FALSE,
-        L"eventoCriacaoMailslotExibicao"
-    );
-      
+    CreateEventW( nullptr, TRUE, FALSE, L"eventoCriacaoMailslotExibicao" );     
 
     if (eventoCriacaoMailslotExibicao == nullptr) {
-        std::cout << "[Produtor] Erro ao abrir evento de Exibicao: "
-                << GetLastError() << std::endl;
+        std::cout << "[Produtor] Erro ao abrir evento de Exibicao: " << GetLastError() << std::endl;
 
         CloseHandle(mailslotHandle);
         CloseHandle(eventoDeEncerramento);
@@ -747,6 +747,13 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
 
     if (eventoAlternarExibicao == nullptr) {
         std::cout << "[Processo Produtor] Erro ao abrir evento da tecla p: " << GetLastError() << std::endl;
+        CloseHandle(eventoAlternarPCP);
+        CloseHandle(eventoAlternarSupervisorio);
+        CloseHandle(eventoAlternarRetirada);
+        CloseHandle(mailslotExibicao);
+        CloseHandle(mailslotHandle);
+        CloseHandle(eventoDeEncerramento);
+        CloseHandle(CloseEvent);
         return 1;   
     }
 
@@ -856,8 +863,9 @@ HANDLE eventoCriacaoMailSlot =  CreateEventW( nullptr,   TRUE,  FALSE,  L"evento
         }
     }
 
-    //buffer.CloseHandles(); closehandles é privado
+    
     CloseHandle(eventoAlternarSupervisorio);
+    CloseHandle(eventoAlternarPCP);
     CloseHandle(eventoAlternarRetirada);
     CloseHandle(CloseEvent);
     CloseHandle(mailslotHandle);
