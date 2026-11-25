@@ -38,9 +38,14 @@ bool Buffer2::Insert(const std::string& message) {
         return false;
     }
 
-    if (!WaitObject(vagas_semaph_)) {
-        return false;
-    }
+    const DWORD r = WaitForSingleObject(vagas_semaph_, 0);
+
+    if (r == WAIT_TIMEOUT) {
+        std::cout<< "[Buffer 2] Lista cheia: Tarefa 3 bloqueada aguardando vaga\n";
+        if (!WaitObject(vagas_semaph_)) return false;
+        std::cout << "[Buffer 2] Vaga liberada: Tarefa 3 retomou\n";
+
+    } else if (r != WAIT_OBJECT_0) return false;
 
     if (!WaitMutex()) {
         ReleaseSemaphore(vagas_semaph_, 1, nullptr);
@@ -128,5 +133,57 @@ void Buffer2::CloseHandles() {
         CloseHandle(mutex_);
         mutex_ = nullptr;
     }
+}
+bool Buffer2::TryRemove(std::string& message) {
+
+    if (CloseEvent_ != nullptr &&
+        WaitForSingleObject(CloseEvent_, 0) == WAIT_OBJECT_0) {
+        return false;
+    }
+
+        DWORD resultado = WaitForSingleObject(message_semaph_, 0);
+
+            if (resultado == WAIT_TIMEOUT) {
+                if (inicioEspera_ == 0)   inicioEspera_ = GetTickCount();            
+
+                if (!avisoVazio_ && GetTickCount() - inicioEspera_ >= 1000) {
+                    std::cout << "[Buffer 2] Lista vazia: Tarefa de Exibicao aguardando mensagem\n";
+                    avisoVazio_ = true;
+                }
+
+                return false;
+            }
+
+    if (resultado != WAIT_OBJECT_0) return false;
+
+
+    if (!WaitMutex()) {
+        ReleaseSemaphore(message_semaph_, 1, nullptr);
+        return false;
+    }
+
+    message = std::move(data_[begin_]);
+    data_[begin_].clear();
+
+    begin_ = (begin_ + 1) % capacity;
+
+    ReleaseMutex(mutex_);
+
+    if (!ReleaseSemaphore(vagas_semaph_, 1, nullptr)) {
+        std::cerr
+            << "[Buffer 2] Erro ao liberar vaga. Codigo: "
+            << GetLastError()
+            << '\n';
+
+        return false;
+    }
+
+    if (avisoVazio_) std::cout << "[Buffer 2] Mensagem disponivel: Tarefa de Exibicao retomou\n";
+        
+
+    avisoVazio_ = false;
+    inicioEspera_ = 0;
+
+    return true;
 }
   

@@ -54,14 +54,12 @@ std::vector<HANDLE> handlesDosProcessos;
 
 struct evento { // não gostei muito disso daqui não
 	HANDLE eventoDeEncerramentoPrematuroDeUmProcessoFilho;
-	HANDLE eventoDeEncerramentoDosProcessosFilhos; // falta
-	HANDLE eventoDeAlternarEstadoDaLeituraDoSupervisorio; // falta
-	HANDLE eventoDeAlternarEstadoDaLeituraDoPCP; // falta
-	HANDLE eventoDeAlternarEstadoDaRetiradaDeMensagens; // falta
-	HANDLE eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso; // falta
-	HANDLE eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao; // falta
-	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso;
-	HANDLE eventoDeLimparJanelaDaTarefaDeGestaoDaProducao;
+	HANDLE eventoDeEncerramentoDosProcessosFilhos;
+	HANDLE eventoDeAlternarEstadoDaLeituraDoSupervisorio;
+	HANDLE eventoDeAlternarEstadoDaLeituraDoPCP;
+	HANDLE eventoDeAlternarEstadoDaRetiradaDeMensagens;
+	HANDLE eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso;
+	HANDLE eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao;
 };
 
 evento eventos;
@@ -143,9 +141,6 @@ void encerrarProcessosFilhos(std::vector<std::pair<processo*, std::string>> &pro
 			
 		}
 
-		CloseHandle(eventos.eventoDeEncerramentoDosProcessosFilhos);
-		eventos.eventoDeEncerramentoDosProcessosFilhos = nullptr;
-
 	} else {
 		std::cout << "Handle do evento de encerramento inválido." << std::endl;
 		return;
@@ -195,7 +190,31 @@ unsigned __stdcall monitorarProcessosFilhos(void* param) {
 
 	return 0;
 }
+bool enviarComandoLimpeza(const wchar_t* nomeMailslot) {
 
+    HANDLE mailslot = CreateFileW(nomeMailslot, GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL, nullptr );
+
+    if (mailslot == INVALID_HANDLE_VALUE) {
+        std::cout << "[Processo Principal] Erro ao abrir mailslot: " << GetLastError() << std::endl;
+        return false;
+    }
+
+    const char comando[] = "LIMPAR";
+    DWORD bytesEscritos = 0;
+
+    BOOL envio = WriteFile( mailslot, comando, sizeof(comando) - 1, &bytesEscritos, nullptr );
+
+    DWORD erro = envio ? ERROR_SUCCESS : GetLastError();
+
+    CloseHandle(mailslot);
+
+    if (!envio || bytesEscritos != sizeof(comando) - 1) {
+        std::cout << "[Processo Principal] Falha ao enviar comando de limpeza: " << erro << std::endl;
+        return false;
+    }
+
+    return true;
+}
 //--------------------------------------------------
 //  FUNÇÃO DE EXIBIÇÃO DO MENU DE OPÇÕES DO SISTEMA
 //--------------------------------------------------
@@ -244,7 +263,6 @@ void menu(evento& eventos) {
 
 		if (tecla == ESC) {
 			std::cout << "O sistema está sendo encerrado." << std::endl;
-
 			SetEvent(eventos.eventoDeEncerramentoDosProcessosFilhos);
 		}
 		else if (tecla == 's') {
@@ -263,10 +281,10 @@ void menu(evento& eventos) {
 			SetEvent(eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao);
 		}
 		else if (tecla == '1') {
-			SetEvent(eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso);
+			if (enviarComandoLimpeza( L"\\\\.\\mailslot\\comunicacaoSupervisorio" )) std::cout << "[Processo Principal] Comando de limpeza da Exibicao enviado." << std::endl;
 		}
 		else if (tecla == '2') {
-			SetEvent(eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao);
+			 if (enviarComandoLimpeza( L"\\\\.\\mailslot\\controleGestao")) std::cout << "[Processo Principal] Comando de limpeza da Gestao enviado." << std::endl;
 		}
 		else {
 			std::cout << "Opção de entrada inválida. Por favor, forneça uma entrada válida." << std::endl;
@@ -293,103 +311,84 @@ int main() {
 	//				DECLARAÇÃO DOS EVENTOS
 	//--------------------------------------------------
 
-	eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho = CreateEventW(nullptr,
-																		  true,
-																		  false,
-																		  L"eventoDeEncerramentoPrematuroDeUmProcessoFilho");
-
-	if (eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho == nullptr) {
-		std::cout
-			<< "[Processo Principal] Erro ao criar evento de encerramento prematuro de processos-filhos. Codigo: "
-			<< GetLastError()
-			<< std::endl;
-
-		return 1;
-	}
+	eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho = CreateEventW(nullptr, true, false,  L"eventoDeEncerramentoPrematuroDeUmProcessoFilho");
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoPrematuroDeUmProcessoFilho);
 
-	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr,
-																  true,
-																  false,
-																  L"eventoDeEncerramentoDosProcessosFilhos");
+	eventos.eventoDeEncerramentoDosProcessosFilhos = CreateEventW(nullptr, true, false, L"eventoDeEncerramentoDosProcessosFilhos");
 
-	if (eventos.eventoDeEncerramentoDosProcessosFilhos == nullptr) {
-		std::cout
-			<< "[Processo Principal] Erro ao criar evento de encerramento ideal de processos-filhos. Codigo: "
-			<< GetLastError()
-			<< std::endl;
+	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
+	// Evento de controle da tecla 'r'
+	eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens = CreateEventW(nullptr,FALSE,	FALSE,L"eventoDeAlternarEstadoDaRetiradaDeMensagens");
+
+	if (eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens == nullptr) {
+		std::cout<< "[Processo Principal] Erro ao criar evento da tecla r. Codigo: "<< GetLastError()<< std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens);
+
+
+	// Evento de controle da tecla 's'
+	eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio =	CreateEventW(nullptr, FALSE, FALSE, L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
+
+	if (eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla s: "<< GetLastError() << std::endl;
 		return 1;
 	}
 
 	handlesDosEventos.push_back(eventos.eventoDeEncerramentoDosProcessosFilhos);
 
 	// Evento de controle da tecla 'r'
-	eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens =
-		CreateEventW(
-			nullptr,
-			FALSE,
-			FALSE,
-			L"eventoDeAlternarEstadoDaRetiradaDeMensagens"
-		);
+	eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens = CreateEventW(nullptr,FALSE,	FALSE,L"eventoDeAlternarEstadoDaRetiradaDeMensagens");
 
 	if (eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens == nullptr) {
-		std::cout
-			<< "[Processo Principal] Erro ao criar evento da tecla r. Codigo: "
-			<< GetLastError()
-			<< std::endl;
+		std::cout<< "[Processo Principal] Erro ao criar evento da tecla r. Codigo: "<< GetLastError()<< std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens);
 
+
+	// Evento de controle da tecla 's'
+	eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio =	CreateEventW(nullptr, FALSE, FALSE, L"eventoDeAlternarEstadoDaLeituraDoSupervisorio");
+
+	if (eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla s: "<< GetLastError() << std::endl;
 		return 1;
 	}
 
-	handlesDosEventos.push_back(
-		eventos.eventoDeAlternarEstadoDaRetiradaDeMensagens
-	);
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaLeituraDoSupervisorio);
 
-	// Evento de limpar o console do processo de Gestão de Produção
-	eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso =
-		CreateEventW(
-			nullptr,
-			FALSE,
-			FALSE,
-			L"eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso"
-		);
+	// Evento de controle da tecla 'm'
+	eventos.eventoDeAlternarEstadoDaLeituraDoPCP =	CreateEventW(nullptr,FALSE,	FALSE,	L"eventoDeAlternarEstadoDaLeituraDoPCP");
 
-	if (eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso == nullptr) {
-		std::cout
-			<< "[Processo Principal] Erro ao criar evento de limpeza do console de Exibição. Codigo: "
-			<< GetLastError()
-			<< std::endl;
-
+	if (eventos.eventoDeAlternarEstadoDaLeituraDoPCP == nullptr) {
+		std::cout<< "[Processo Principal] Erro ao criar evento da tecla m: "<< GetLastError() << std::endl;
 		return 1;
 	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaLeituraDoPCP);
 
-	handlesDosEventos.push_back(
-		eventos.eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso
-	);
+	// Evento de bloqueio/desbloqueio da exibição
+	eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso =CreateEventW(nullptr,FALSE,	FALSE,	L"eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso");
 
-	// Evento de limpar o console do processo Produtor
-	eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao =
-		CreateEventW(
-			nullptr,
-			FALSE,
-			FALSE,
-			L"eventoDeLimparJanelaDaTarefaDeGestaoDaProducao"
-		);
-
-	if (eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao == nullptr) {
-		std::cout
-			<< "[Processo Principal] Erro ao criar evento de limpeza do console de Gestão. Codigo: "
-			<< GetLastError()
-			<< std::endl;
-
+	if (eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla p: "<< GetLastError() << std::endl;
 		return 1;
 	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaExibicaoDosDadosDeProcesso);
 
-	handlesDosEventos.push_back(
-		eventos.eventoDeLimparJanelaDaTarefaDeGestaoDaProducao
-	);
+	// Evento de bloqueio/desbloqueio da Gestão de Produção
+	eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao = CreateEventW(nullptr,FALSE,FALSE,L"eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao");
+
+	if (eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao == nullptr) {
+		std::cout << "[Processo Principal] Erro ao criar evento da tecla g: "<< GetLastError() << std::endl;
+		return 1;
+	}
+	handlesDosEventos.push_back(eventos.eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao);
+
+
+
+
 
 	//--------------------------------------------------
 	//	  OBTENÇÃO DO DIRETÓRIO DOS EXECUTÁVEIS
@@ -494,6 +493,13 @@ int main() {
 	} else {
 		std::cout << "[Proceso Principal] Resultado inesperado ao aguardar o término da thread secundária." << std::endl;
 	}
+
 	encerrarProcessosFilhos(processos);
+
+	for (HANDLE handle : handlesDosEventos) {
+		if (handle != nullptr) 	CloseHandle(handle);		
+	}
+	handlesDosEventos.clear();
+
 	return 0;
 }

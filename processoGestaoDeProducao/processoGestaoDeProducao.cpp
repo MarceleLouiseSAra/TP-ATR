@@ -9,8 +9,10 @@
 #include <filesystem>
 #include <conio.h>		// _getch
 #include <sstream>
+#include <iomanip>
 
 #define NOME_MAISLOT L"\\\\.\\mailslot\\comunicacaoPCP"
+#define NOME_MAILSLOT_CONTROLE_GESTAO L"\\\\.\\mailslot\\controleGestao"
 
 typedef unsigned* CAST_LPDWORD;
 
@@ -29,6 +31,8 @@ struct mensagemPCP {
 struct DadosRecepcao {
     HANDLE mailslotHandle;
     HANDLE eventoDeEncerramento;
+	HANDLE eventoAlternarGestao;
+	HANDLE mailslotControleGestao;
 };
 
 HANDLE criarMailslot(HANDLE eventoCriacaoMailSlot) {
@@ -80,6 +84,22 @@ bool IsAInterpretavelMessage(const std::string& texto, mensagemPCP& mensagem){
 
     return true;    
 }
+void limparConsole() {
+
+    HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    CONSOLE_SCREEN_BUFFER_INFO info;
+
+    if (!GetConsoleScreenBufferInfo(console, &info)) return;   
+    DWORD tamanho = static_cast<DWORD>(info.dwSize.X)* static_cast<DWORD>(info.dwSize.Y);
+
+    DWORD caracteresEscritos;
+    COORD inicio = {0, 0};
+
+    FillConsoleOutputCharacterW(console, L' ', tamanho, inicio, &caracteresEscritos );
+    FillConsoleOutputAttribute( console,info.wAttributes,tamanho,inicio,&caracteresEscritos);
+	SetConsoleCursorPosition(console, inicio);
+}
 
 unsigned __stdcall receberMensagens(void* param) {
 
@@ -87,8 +107,12 @@ unsigned __stdcall receberMensagens(void* param) {
     DadosRecepcao* dados = static_cast<DadosRecepcao*>(param);
 
     HANDLE mailslotHandle = dados->mailslotHandle;
-
     HANDLE eventoDeEncerramento = dados->eventoDeEncerramento;
+	HANDLE eventoAlternarGestao = dados->eventoAlternarGestao;
+	HANDLE mailslotControleGestao = dados->mailslotControleGestao;
+
+	bool gestaoBloqueada = false;
+	HANDLE eventosControle[2] = { eventoDeEncerramento,  eventoAlternarGestao};
       
 
 	if (mailslotHandle == INVALID_HANDLE_VALUE) {
@@ -107,24 +131,44 @@ unsigned __stdcall receberMensagens(void* param) {
 	while (true) {
       
 		
-		DWORD estado = WaitForSingleObject(eventoDeEncerramento, 0);
+		DWORD estado = WaitForMultipleObjects(2, eventosControle,FALSE,  50);
 
-		if (estado == WAIT_OBJECT_0) {
-			break;
-		}
+		if (estado == WAIT_OBJECT_0) break;
+		
 
-		if (estado == WAIT_FAILED) {
-			std::cout << "Erro ao verificar encerramento: "
-					<< GetLastError() << std::endl;
+		if (estado == WAIT_OBJECT_0 + 1) {
+			gestaoBloqueada = !gestaoBloqueada;
+			std::cout << "[Gestao] Exibicao da Gestao de Producao " << (gestaoBloqueada ? "BLOQUEADA" : "LIBERADA")	<< std::endl;
+		} else if (estado == WAIT_FAILED) {
+			std::cout << "[Gestao] Erro ao aguardar eventos: "<< GetLastError() << std::endl;
 			return 1;
 		}
-		bool existemMensagens = GetMailslotInfo(
-			mailslotHandle,
-			NULL,
-			&tamanhoDaMensagem,
-			&quantidadeDeMensagens,
-			NULL						
-		);
+
+		// Verifica comandos de controle da Gestao
+		DWORD tamanhoComando;
+		DWORD quantidadeComandos;
+
+		if (!GetMailslotInfo(mailslotControleGestao,nullptr,&tamanhoComando,&quantidadeComandos,nullptr)) {
+			std::cout << "[Gestao] Erro ao consultar mailslot de controle: "<< GetLastError() << std::endl;
+			return 1;
+		}
+
+		if (quantidadeComandos > 0) {
+
+			char comando[7] = {};
+			DWORD bytesComando = 0;
+			if (!ReadFile(mailslotControleGestao,comando,sizeof(comando) - 1,&bytesComando,	nullptr)) {
+				std::cout << "[Gestao] Erro ao receber comando: "	<< GetLastError() << std::endl;
+				return 1;
+			}
+			if (std::string(comando, bytesComando) == "LIMPAR") limparConsole();
+			
+		}
+
+		if (gestaoBloqueada) continue;
+		
+
+		bool existemMensagens = GetMailslotInfo(mailslotHandle,	NULL,&tamanhoDaMensagem,&quantidadeDeMensagens,NULL);
 
 		if (!existemMensagens) {
 			std::cout << "[Processo de Gestão de Produção] Erro ao obter informações do mailslot. Código de saída: " << GetLastError() << std::endl;
@@ -154,28 +198,22 @@ unsigned __stdcall receberMensagens(void* param) {
 					continue;
 				}
 				mensagemRecebida[bytesLidos] = '\0';
-				std::cout << "[Processo de Gestão de Produção] Mensagem recebida: "<< mensagemRecebida << std::endl;
+				//std::cout << "[Processo de Gestão de Produção] Mensagem recebida: "<< mensagemRecebida << std::endl;
 				 mensagemPCP mensagem{};
 
 				if (!IsAInterpretavelMessage(mensagemRecebida, mensagem)) {
 					std::cout << "[Gestao] Mensagem PCP invalida."<< std::endl;
 					continue;
 				}
-				std::cout << "[Gestao] TIPO: " << mensagem.TIPO
-						<< " | NSEQ: " << mensagem.NSEQ
-						<< " | HORA: " << mensagem.HORA
-						<< " | DURACAO: " << mensagem.DURACAO
-						<< " | OP: " << mensagem.OP
-						<< std::endl;
+				std::cout << "[Gestao] NSEQ: "
+					<< std::setfill('0') << std::setw(5) << mensagem.NSEQ
+					<< " | OP: " << mensagem.OP
+					<< " | HORA DE INICIO: " << mensagem.HORA
+					<< " | DURACAO: " << std::setw(5) << mensagem.DURACAO
+					<< std::setfill(' ')
+					<< std::endl;
 			}
-		}
-		DWORD espera = WaitForSingleObject( eventoDeEncerramento, 50);
-
-		if (espera == WAIT_OBJECT_0) break;
-		if (espera == WAIT_FAILED) {
-			std::cout << "Erro ao aguardar evento de encerramento: "<< GetLastError() << std::endl;
-			return 1;
-		}
+		}		
 	}
 	return 0;
 }
@@ -233,30 +271,24 @@ int main() {
 	SetConsoleOutputCP(CP_UTF8); // Configura a saída do console para UTF-8
 	std::cout << "[Processo de Gestão de Produção] Este é o processo de gestão de produção.\n";
 
-	// Seção de abertura de eventos
-	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE,
-											 FALSE, 
-											 L"eventoDeEncerramentoDosProcessosFilhos");
+	HANDLE eventoDeEncerramento = OpenEventW(SYNCHRONIZE, FALSE, L"eventoDeEncerramentoDosProcessosFilhos");
 
 	if (eventoDeEncerramento == nullptr) {
 		std::cout << "[Processo de Gestão de Produção] Erro ao abrir o evento de encerramento. Código de saída: " << GetLastError() << std::endl;
 		return 1;
 	}
 
-	HANDLE eventoDeLimparJanelaDaTarefaDeGestaoDaProducao = OpenEventW(SYNCHRONIZE,
-		FALSE,
-		L"eventoDeLimparJanelaDaTarefaDeGestaoDaProducao");
+	// Evento de bloqueio/desbloqueio da Gestao de Producao
+	HANDLE eventoAlternarGestao = OpenEventW( SYNCHRONIZE, FALSE,L"eventoDeAlternarEstadoDaExibicaoDaGestaoDeProducao");
 
-	if (eventoDeLimparJanelaDaTarefaDeGestaoDaProducao == nullptr) {
-		std::cout << "Erro ao abrir o evento de limpeza do console de Exibição. Código de saída: " << GetLastError() << std::endl;
+	if (eventoAlternarGestao == nullptr) {
+		std::cout << "[Processo de Gestao de Producao] Erro ao abrir evento da tecla g: "<< GetLastError() << std::endl;
+		CloseHandle(eventoDeEncerramento);
 		return 1;
 	}
 
-	// Seção de criação de eventos
-	HANDLE eventoCriacaoMailSlot = CreateEventW(nullptr,
-								   true,
-								   false,
-								   L"eventoCriacaoMailSlot");
+
+	HANDLE eventoCriacaoMailSlot = CreateEventW(nullptr,  true,  false,  L"eventoCriacaoMailSlot");
 
 	if (eventoCriacaoMailSlot == nullptr) {
 		std::cout << "[Processo de Gestão de Produção] Erro ao abrir o evento de criação do mailslot. Código de saída: " << GetLastError() << std::endl;
@@ -265,9 +297,22 @@ int main() {
 
 	HANDLE mailslotHandle = criarMailslot(eventoCriacaoMailSlot);
 
-	if (mailslotHandle == INVALID_HANDLE_VALUE) { 
+	if (mailslotHandle == INVALID_HANDLE_VALUE) return 1;
+
+	// Cria o mailslot exclusivo para comandos da Gestao
+	HANDLE mailslotControleGestao = CreateMailslotW(NOME_MAILSLOT_CONTROLE_GESTAO, 6, 0, nullptr);
+
+	if (mailslotControleGestao == INVALID_HANDLE_VALUE) {
+		std::cout << "[Gestao] Erro ao criar mailslot de controle: "<< GetLastError() << std::endl;
+		CloseHandle(mailslotHandle);
+		CloseHandle(eventoCriacaoMailSlot);
+		CloseHandle(eventoAlternarGestao);
+		CloseHandle(eventoDeEncerramento);
+
 		return 1;
 	}
+
+	std::cout << "[Gestao] Mailslot de controle criado com sucesso."<< std::endl;
 
 	//--------------------------------------------------
 	//	        CRIAÇÃO DE THREADS SECUNDÁRIAS
@@ -277,60 +322,29 @@ int main() {
 	DWORD threadDeMonitoramentoId, threadReceptoraId, threadDeLimpezaId;
 
 	// Criação de uma thread de monitoramento do evento de encerramento
-	threadDeMonitoramento = (HANDLE)_beginthreadex(NULL,
-												   0,
-												   monitorarEncerramento,
-												   eventoDeEncerramento,
-												   0,
-												   (CAST_LPDWORD)&threadDeMonitoramentoId
-	);
+	HANDLE threadDeMonitoramento;
+	DWORD threadDeMonitoramentoId;
 
-	if (threadDeMonitoramento) {
-		std::cout << "[Processo de Gestão de Produção] Thread de monitoramento criada com sucesso. ID da thread: " << threadDeMonitoramentoId << std::endl;
-	}
-	else {
-		std::cout << "[Processo de Gestão de Produção] Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
-	}
+	threadDeMonitoramento = (HANDLE)_beginthreadex(NULL, 0, monitorarEncerramento, eventoDeEncerramento, 0, (CAST_LPDWORD)&threadDeMonitoramentoId);
+
+	if (threadDeMonitoramento) 	std::cout << "[Processo de Gestão de Produção] Thread de monitoramento criada com sucesso. ID da thread: " << threadDeMonitoramentoId << std::endl;
+	else std::cout << "[Processo de Gestão de Produção] Erro na criação da thread de monitoramento. Código: " << GetLastError() << std::endl;
 
 	// Criação de uma thread para receber mensagens do mailslot
 	DadosRecepcao dadosRecepcao = {
 		mailslotHandle,
-		eventoDeEncerramento
+		eventoDeEncerramento,
+		eventoAlternarGestao,
+		mailslotControleGestao
 	};
 	
-	threadReceptora =
-    (HANDLE)_beginthreadex(
-        NULL,
-        0,
-        receberMensagens,
-        &dadosRecepcao,
-        0,
-        (CAST_LPDWORD)
-        &threadReceptoraId
-    );
+	threadReceptora = (HANDLE)_beginthreadex( NULL, 0, receberMensagens, &dadosRecepcao, 0, (CAST_LPDWORD) &threadReceptoraId );
 		
 
-	if (threadReceptora) {
-		std::cout << "[Processo de Gestão de Produção] Thread recptora criada com sucesso. ID da thread: " << threadReceptoraId << std::endl;
-	}
-	else {
-		std::cout << "[Processo de Gestão de Produção] Erro na criação da thread recptora. Código: " << GetLastError() << std::endl;
-	}
+	if (threadReceptora) std::cout << "[Processo de Gestão de Produção] Thread recptora criada com sucesso. ID da thread: " << threadReceptoraId << std::endl;
+	else std::cout << "[Processo de Gestão de Produção] Erro na criação da thread recptora. Código: " << GetLastError() << std::endl;
+	
 
-	// Criação de uma thread dedicada ao monitoramento do comando de limpeza do console
-	threadDeLimpeza = (HANDLE)_beginthreadex(
-		nullptr,
-		0,
-		monitorarComandoDeLimpezaDoConsole,
-		eventoDeLimparJanelaDaTarefaDeGestaoDaProducao,
-		0,
-		(CAST_LPDWORD) &threadDeLimpezaId
-	);
-
-	if (threadDeLimpeza == nullptr) {
-		std::cout << "[Processo de Gestão de Produção] Erro ao criar thread de limpeza."
-			<< std::endl;
-	}
 	
 	//--------------------------------------------------
 	//    FECHA OS HANDLES DOS EVENTOS E MAILSLOT
@@ -358,6 +372,8 @@ int main() {
 		CloseHandle(threadDeMonitoramento);
 	}
 
+	CloseHandle(mailslotControleGestao);
+	CloseHandle(eventoAlternarGestao);
 	CloseHandle(eventoDeEncerramento);
 	CloseHandle(mailslotHandle);
 	CloseHandle(eventoCriacaoMailSlot);

@@ -42,12 +42,12 @@ bool interpretarMensagemSupervisorio(const std::string& texto, mensagemSuperviso
         mensagem.TIPO = 1;
         mensagem.NSEQ = std::stoul(texto.substr(2, 5));
 
-        mensagem.TZ1 = std::stof(texto.substr(8, 5));
-        mensagem.TZ2 = std::stof(texto.substr(14, 5));
-        mensagem.TZ3 = std::stof(texto.substr(20, 5));
+        mensagem.VOL = std::stof(texto.substr(8, 5));
+		mensagem.PRES = std::stof(texto.substr(14, 5));
 
-        mensagem.VOL = std::stof(texto.substr(26, 5));
-        mensagem.PRES = std::stof(texto.substr(32, 5));
+		mensagem.TZ1 = std::stof(texto.substr(20, 5));
+		mensagem.TZ2 = std::stof(texto.substr(26, 5));
+		mensagem.TZ3 = std::stof(texto.substr(32, 5));
 
         mensagem.TIMESTAMP = texto.substr(38, 12);
 
@@ -71,10 +71,27 @@ HANDLE criarMailslotExibicao() {
     return mailslotHandle;
 }
   
+void limparConsole() {
+
+    HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    CONSOLE_SCREEN_BUFFER_INFO info;
+
+    if (!GetConsoleScreenBufferInfo(console, &info)) return;
+
+    DWORD tamanho = static_cast<DWORD>(info.dwSize.X) * static_cast<DWORD>(info.dwSize.Y);
+
+    DWORD caracteresEscritos;
+    COORD inicio = {0, 0};
+
+    FillConsoleOutputCharacterW( console, L' ', tamanho,inicio, &caracteresEscritos);
+    FillConsoleOutputAttribute(console, info.wAttributes, tamanho, inicio, &caracteresEscritos);
+    SetConsoleCursorPosition(console, inicio);
+}
+
 unsigned __stdcall receberMensagensSupervisorio(void* param) {
 
-    DadosRecepcaoExibicao* dados =
-        static_cast<DadosRecepcaoExibicao*>(param);
+    DadosRecepcaoExibicao* dados =  static_cast<DadosRecepcaoExibicao*>(param);
 
     HANDLE mailslotHandle = dados->mailslotHandle;
     HANDLE eventoDeEncerramento = dados->eventoDeEncerramento;
@@ -92,71 +109,54 @@ unsigned __stdcall receberMensagensSupervisorio(void* param) {
 
     while (true) {
 
-        DWORD estado = WaitForSingleObject(
-            eventoDeEncerramento, 0
-        );
+        DWORD estado = WaitForSingleObject(eventoDeEncerramento, 0);
 
-        if (estado == WAIT_OBJECT_0) {
-            break;
-        }
+        if (estado == WAIT_OBJECT_0) break;
+        
 
         if (estado != WAIT_TIMEOUT) {
-            std::cout << "[Exibicao] Erro ao verificar encerramento."
-                      << std::endl;
+            std::cout << "[Exibicao] Erro ao verificar encerramento." << std::endl;
             return 1;
         }
 
-        BOOL existemMensagens = GetMailslotInfo(
-            mailslotHandle,
-            nullptr,
-            &tamanhoDaMensagem,
-            &quantidadeDeMensagens,
-            nullptr
-        );
+        BOOL existemMensagens = GetMailslotInfo(mailslotHandle,nullptr,&tamanhoDaMensagem,&quantidadeDeMensagens,nullptr);
 
         if (!existemMensagens) {
-            std::cout << "[Exibicao] Erro ao consultar mailslot: "
-                      << GetLastError() << std::endl;
+            std::cout << "[Exibicao] Erro ao consultar mailslot: "<< GetLastError() << std::endl;
             return 1;
         }
 
         if (quantidadeDeMensagens > 0) {
+            if (tamanhoDaMensagem >= sizeof(mensagemRecebida)) {
+				std::cout << "[Exibicao] Mensagem maior que o buffer de recepcao."<< std::endl;
+				return 1;
+			}
 
-            if (tamanhoDaMensagem != 50) {
-                std::cout << "[Exibicao] Tamanho de mensagem invalido."
-                          << std::endl;
-                return 1;
-            }
-
-            BOOL leituraBemSucedida = ReadFile(
-                mailslotHandle,
-                mensagemRecebida,
-                sizeof(mensagemRecebida) - 1,
-                &bytesLidos,
-                nullptr
-            );
+            BOOL leituraBemSucedida = ReadFile(mailslotHandle, mensagemRecebida, sizeof(mensagemRecebida) - 1, &bytesLidos,nullptr);
 
             if (!leituraBemSucedida) {
-                std::cout << "[Exibicao] Erro ao ler mensagem: "
-                          << GetLastError() << std::endl;
-                return 1;
-            }
-
-            if (bytesLidos != 50) {
-                std::cout << "[Exibicao] Quantidade de bytes invalida."
-                          << std::endl;
+                std::cout << "[Exibicao] Erro ao ler mensagem: " << GetLastError() << std::endl;
                 return 1;
             }
 
             mensagemRecebida[bytesLidos] = '\0';
 
+			// Verifica o comando de limpeza da janela
+			if (std::string(mensagemRecebida, bytesLidos) == "LIMPAR") {
+				limparConsole();
+				continue;
+			}
+
+			// Valida o tamanho das mensagens do Supervisorio
+			if (bytesLidos != 50) {
+				std::cout << "[Exibicao] Quantidade de bytes invalida."	<< std::endl;
+				continue;
+			}
+
             mensagemSupervisorio mensagem{};
 
-			if (!interpretarMensagemSupervisorio(
-					mensagemRecebida, mensagem)) {
-
-				std::cout << "[Exibicao] Mensagem invalida."
-						<< std::endl;
+			if (!interpretarMensagemSupervisorio(mensagemRecebida, mensagem)) {
+				std::cout << "[Exibicao] Mensagem invalida."<< std::endl;
 				continue;
 			}
 			std::ostringstream saida;
@@ -169,22 +169,18 @@ unsigned __stdcall receberMensagensSupervisorio(void* param) {
 				<< " | TZ3: " << std::setw(5) << mensagem.TZ3
 				<< " | VOL: " << std::setw(5) << mensagem.VOL
 				<< " | PRES: " << std::setw(5) << mensagem.PRES
-				<< " | TIMESTAMP: " << mensagem.TIMESTAMP;
+				<< " | HORA: " << mensagem.TIMESTAMP;
 
 			std::cout << saida.str() << std::endl;
 		}
 
-        DWORD espera = WaitForSingleObject(
-            eventoDeEncerramento, 50
-        );
+        DWORD espera = WaitForSingleObject( eventoDeEncerramento, 50 );
 
-        if (espera == WAIT_OBJECT_0) {
-            break;
-        }
+        if (espera == WAIT_OBJECT_0)  break;
+        
 
         if (espera == WAIT_FAILED) {
-            std::cout << "[Exibicao] Erro na espera: "
-                      << GetLastError() << std::endl;
+            std::cout << "[Exibicao] Erro na espera: "  << GetLastError() << std::endl;
             return 1;
         }
     }
@@ -320,18 +316,12 @@ int main() {
 	}
 
 	// Cria a thread receptora do Supervisorio
-	HANDLE threadReceptora = (HANDLE)_beginthreadex(
-		nullptr,
-		0,
-		receberMensagensSupervisorio,
-		&dadosRecepcao,
-		0,
-		&threadReceptoraId
-	);
+	unsigned int threadReceptoraId = 0;
+
+	HANDLE threadReceptora = (HANDLE)_beginthreadex(nullptr,0,receberMensagensSupervisorio,	&dadosRecepcao,	0,&threadReceptoraId);
 
 	if (threadReceptora == nullptr) {
-		std::cout << "[Exibicao] Erro ao criar thread receptora."
-				<< std::endl;
+		std::cout << "[Exibicao] Erro ao criar thread receptora."<< std::endl;
 
 		// Aguarda o encerramento geral antes de liberar os recursos.
 		monitorarEncerramento(eventoDeEncerramento);
