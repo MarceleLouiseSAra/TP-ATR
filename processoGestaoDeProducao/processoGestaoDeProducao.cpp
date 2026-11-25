@@ -242,30 +242,6 @@ unsigned __stdcall monitorarEncerramento(void* param) {
 	return 1;
 }
 
-void limparConsole() {
-	// Limpa a tela do console
-	system("cls");
-}
-
-unsigned __stdcall monitorarComandoDeLimpezaDoConsole(void* param) {
-	HANDLE eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso = static_cast<HANDLE>(param);
-
-	while (true) {
-		DWORD resultado = WaitForSingleObject(
-			eventoDeLimparJanelaDaTarefaDeExibicaoDosDadosDeProcesso,
-			INFINITE);
-
-		if (resultado == WAIT_OBJECT_0) {
-			limparConsole();
-		}
-		else {
-			break;
-		}
-	}
-
-	return 0;
-}
-
 int main() {
 
 	SetConsoleOutputCP(CP_UTF8); // Configura a saída do console para UTF-8
@@ -318,12 +294,8 @@ int main() {
 	//	        CRIAÇÃO DE THREADS SECUNDÁRIAS
 	//--------------------------------------------------
 	
-	HANDLE threadDeMonitoramento, threadReceptora, threadDeLimpeza;
-	DWORD threadDeMonitoramentoId, threadReceptoraId, threadDeLimpezaId;
-
-	// Criação de uma thread de monitoramento do evento de encerramento
-	HANDLE threadDeMonitoramento;
-	DWORD threadDeMonitoramentoId;
+	HANDLE threadDeMonitoramento, threadReceptora;
+	DWORD threadDeMonitoramentoId, threadReceptoraId;
 
 	threadDeMonitoramento = (HANDLE)_beginthreadex(NULL, 0, monitorarEncerramento, eventoDeEncerramento, 0, (CAST_LPDWORD)&threadDeMonitoramentoId);
 
